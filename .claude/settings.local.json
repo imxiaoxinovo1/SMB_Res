@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(G:/Study/Anaconda/Scripts/activate)",
+      "Bash(conda activate:*)",
+      "Bash(powershell -Command \"cd ''H:\\\\Code\\\\SMB''; & G:/Study/Anaconda/Scripts/activate; conda activate smb; python test/newcode/step2_extract_ERA5_data.py\")",
+      "Bash(powershell -Command \"cd ''H:\\\\Code\\\\SMB''; & G:/Study/Anaconda/Scripts/activate; conda activate smb; python test/newcode/step3_merge_WGMS_ERA5.py\")",
+      "Bash(powershell:*)",
+      "Bash(\"C:\\\\Users\\\\zjw31\\\\.conda\\\\envs\\\\smb\\\\python.exe\":*)"
+    ]
+  }
+}

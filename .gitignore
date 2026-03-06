@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+
+# Large data files (CRITICAL)
+*.nc
+*.grib*
+*.hdf5
+*.zip
+*.tar
+*.tar.gz
+data/ERA5-LAND/
+data/raw/
+
+# CSV & large datasets (CRITICAL)
+test/data/study_test/*.csv
+test/data/merge/*.csv
+test/data/reconstruction/*.csv
+test/result_data/*.csv
+test/result/*.csv
+WGMS/
+RGI/
+2025-02b/
+
+# Result outputs
+*/results/
+*/figures/
+**/results/
+**/figures/
+SMB_figure/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+*.temp
+*.log
+
+# Excel files
+*.xlsx
+*.xls
