@@ -56,3 +56,6 @@ Thumbs.db
 # Excel files
 *.xlsx
 *.xls
+
+# SMB_Res_RF_ByGemini data outputs
+SMB_Res_RF_ByGemini/data/
