@@ -59,3 +59,7 @@ Thumbs.db
 
 # SMB_Res_RF_ByGemini data outputs
 SMB_Res_RF_ByGemini/data/
+
+# SMB_Res_LSTM_Byclaude large generated data
+SMB_Res_LSTM_Byclaude/01_preprocessing/data/
+SMB_Res_LSTM_Byclaude/03_reconstruction/data/rgi02_monthly_climate.csv
