@@ -1,0 +1,13 @@
+# 大型数据文件
+01_preprocessing/data/
+03_reconstruction/data/
+03_reconstruction/results/
+03_reconstruction/figures/
+
+# 模型权重（大）
+02_model/results/*.pt
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
