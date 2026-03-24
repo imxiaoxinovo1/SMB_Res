@@ -37,6 +37,12 @@ RGI/
 **/figures/
 SMB_figure/
 
+# Exception: GlacioFormer model result CSVs/TXTs (not weights)
+!SMB_Res_Glacierformer_Byclaude/02_model/results/
+!SMB_Res_Glacierformer_Byclaude/02_model/results/*/
+!SMB_Res_Glacierformer_Byclaude/02_model/results/**/*.csv
+!SMB_Res_Glacierformer_Byclaude/02_model/results/**/*.txt
+
 # IDE
 .vscode/
 .idea/

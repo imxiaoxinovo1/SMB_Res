@@ -5,7 +5,7 @@
 03_reconstruction/figures/
 
 # 模型权重（大）
-02_model/results/*.pt
+02_model/results/**/*.pt
 
 # Python 缓存
 __pycache__/
