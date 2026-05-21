@@ -34,8 +34,8 @@ ERA5_RGI02_CSV         = os.path.join(DATA_DIR, "era5_monthly_rgi02.csv")
 
 # ── 时间范围 ───────────────────────────────────────────────────────────────────
 TRAIN_YEAR_MIN    = 1950
-TRAIN_YEAR_MAX    = 2014
-HOLDOUT_YEAR_MIN  = 2015
+TRAIN_YEAR_MAX    = 2014     # 训练+交叉验证期末年，含 2014
+HOLDOUT_YEAR_MIN  = 2015     # HOLDOUT_YEAR_MIN == TRAIN_YEAR_MAX + 1，无重叠
 HOLDOUT_YEAR_MAX  = 2024
 RECON_YEAR_MIN    = 1950
 RECON_YEAR_MAX    = 2024
@@ -51,7 +51,8 @@ MONTHLY_CLIMATE_VARS = [
 ]
 N_DYNAMIC = len(MONTHLY_CLIMATE_VARS)   # 15
 
-# ── 静态特征（10个，来自 RGI v7）────────────────────────────────────────────
+# 静态特征（10个）：来自 RGI v7 地形 + 派生编码
+# aspect_sin / aspect_cos 由 aspect_deg 在预处理时计算，非 shapefile 原始字段
 STATIC_FEATURES = [
     'slope_deg', 'aspect_sin', 'aspect_cos',
     'zmin_m', 'zmax_m', 'zmean_m', 'zmed_m',
@@ -83,6 +84,9 @@ GLACIOFORMER_PARAMS = dict(
     early_stop_patience=40, min_epochs=60,
     weight_decay=1e-4,
 )
+
+assert GLACIOFORMER_PARAMS['d_model'] % GLACIOFORMER_PARAMS['n_heads'] == 0, \
+    "d_model must be divisible by n_heads"
 
 # ── 重建冰川面积筛选阈值 ───────────────────────────────────────────────────────
 MIN_AREA_KM2 = 0.5
