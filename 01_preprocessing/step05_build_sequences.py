@@ -3,7 +3,7 @@
 构建 GlacioFormer 月度序列数据集。
 X_dyn: (N, 12, 15) — 每年12个月 × 15个气候变量（已归一化）
 X_sta: (N, 10)     — 10个静态地形特征（已归一化）
-y:     (N,)        — annual_balance_m (m w.e.)
+y:     (N,)        — annual_balance (m w.e.)
 归一化: 使用训练集 (year <= TRAIN_YEAR_MAX) 的 mean/std，保存到 npz 供重建使用
 """
 import sys, os
@@ -21,6 +21,8 @@ df_terrain = pd.read_csv(TERRAIN_CSV)
 df_mb      = pd.read_csv(MASSBAL_RGI02_CSV)
 
 terrain_cols = [c for c in STATIC_FEATURES if c in df_terrain.columns]
+assert len(terrain_cols) == len(STATIC_FEATURES), \
+    f"terrain 文件缺少列: {set(STATIC_FEATURES) - set(df_terrain.columns)}"
 
 # ── Build one sample per (glacier_id, year) ──────────────────────────────────
 X_dyn_list, X_sta_list, y_list, gid_list, year_list = [], [], [], [], []
