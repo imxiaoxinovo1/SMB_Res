@@ -4,12 +4,11 @@
 提取 10 个静态地形特征（aspect_deg 转换为 sin/cos 编码）。
 输出: training_glaciers_terrain.csv
 """
-import sys, os
+import sys, os, io
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['PYTHONIOENCODING'] = 'utf-8'
-import io, sys as _sys
-if hasattr(_sys.stdout, 'buffer'):
-    _sys.stdout = io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import pandas as pd
 import numpy as np
@@ -52,6 +51,7 @@ if n_far > 0:
     for i, d in enumerate(dist):
         if d > DIST_THRESH:
             print(f"  glacier_id={df_wgms.iloc[i]['glacier_id']}  dist={d:.4f}°")
+    # 不中止：坐标可能是近似值，人工确认后继续
 else:
     print(f"所有冰川匹配距离 <= {DIST_THRESH}  OK")
 
