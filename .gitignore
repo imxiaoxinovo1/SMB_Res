@@ -1,0 +1,38 @@
+# 原始数据（体积大，本地保留）
+*.nc
+*.grib*
+*.hdf5
+*.zip
+*.tar
+*.tar.gz
+
+# 预处理中间数据和模型权重
+data/
+*.pt
+*.pth
+*.pkl
+*.npz
+
+# 结果输出（可重现，不上传）
+results/
+figures/
+*.png
+*.pdf
+
+# 大型 CSV 重建结果
+*reconstruction*.csv
+*hybrid*.csv
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 可视化辅助工具（session-local，不提交）
+.superpowers/
