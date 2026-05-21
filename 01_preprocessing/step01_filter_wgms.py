@@ -7,9 +7,8 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import pandas as pd
-import numpy as np
 from config import (GLACIER_CSV, MASSBAL_CSV, TRAINING_GLACIERS_CSV,
-                    MASSBAL_RGI02_CSV, TRAIN_YEAR_MIN, HOLDOUT_YEAR_MAX)
+                    MASSBAL_RGI02_CSV, TRAIN_YEAR_MIN, RECON_YEAR_MAX)
 
 print("=== Step 01: WGMS RGI02 Filter ===")
 
@@ -28,7 +27,7 @@ df_mb_rgi02 = df_mb[
     df_mb['glacier_id'].isin(rgi02_ids) &
     df_mb['annual_balance'].notna() &
     (df_mb['year'] >= TRAIN_YEAR_MIN) &
-    (df_mb['year'] <= HOLDOUT_YEAR_MAX)
+    (df_mb['year'] <= RECON_YEAR_MAX)
 ].copy()
 
 print(f"RGI02 annual_balance 记录数: {len(df_mb_rgi02):,}")
@@ -51,10 +50,10 @@ df_stats = df_mb_rgi02.groupby('glacier_id').agg(
 ).reset_index()
 
 df_out = pd.merge(df_stats, df_static, on='glacier_id', how='left')
+assert df_out[['latitude', 'longitude']].notna().all().all(), "部分冰川缺失坐标，请检查 glacier_id 匹配"
 df_out = df_out.sort_values('n_years', ascending=False)
 
 # 6. 保存
-os.makedirs(os.path.dirname(TRAINING_GLACIERS_CSV), exist_ok=True)
 df_out.to_csv(TRAINING_GLACIERS_CSV, index=False)
 print(f"\n保存 {len(df_out)} 个冰川 → {TRAINING_GLACIERS_CSV}")
 
