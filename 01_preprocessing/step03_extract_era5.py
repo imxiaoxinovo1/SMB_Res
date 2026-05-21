@@ -58,7 +58,11 @@ lons_clamped = np.clip(lons, era5_lon_min, era5_lon_max)
 
 n_clamped = int(np.sum((lats != lats_clamped) | (lons != lons_clamped)))
 if n_clamped > 0:
-    print(f"  注意: {n_clamped} 个冰川坐标超出 ERA5 范围，已裁剪到边界格点")
+    bad_mask = (lats != lats_clamped) | (lons != lons_clamped)
+    print(f"  坐标 clip 修正了 {n_clamped} 个冰川（ERA5 边界之外）:")
+    for i in np.where(bad_mask)[0]:
+        print(f"    冰川 {glacier_ids[i]}: lat={lats[i]:.3f}→{lats_clamped[i]:.3f}, "
+              f"lon={lons[i]:.3f}→{lons_clamped[i]:.3f}")
 
 lats_da = xr.DataArray(lats_clamped, dims='glacier')
 lons_da = xr.DataArray(lons_clamped, dims='glacier')
@@ -111,6 +115,12 @@ print(f"列: {df_out.columns.tolist()}")
 # 快速验证
 assert len(df_out) == n_times * n_glaciers, "行数不对"
 assert df_out['t2m'].notna().mean() > 0.99, "t2m 有大量 NaN"
+# 检查所有变量的 NaN 比例
+for var in MONTHLY_CLIMATE_VARS:
+    if var in df_out.columns:
+        nan_frac = df_out[var].isna().mean()
+        if nan_frac > 0.01:
+            print(f"  WARNING: {var} NaN 比例 {nan_frac:.1%}")
 t2m_range = df_out['t2m'].agg(['min', 'max'])
 assert t2m_range['min'] > -80 and t2m_range['max'] < 40, f"t2m 范围异常: {t2m_range}"
 print(f"t2m 范围验证: {t2m_range['min']:.1f}C ~ {t2m_range['max']:.1f}C OK")
