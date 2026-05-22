@@ -11,6 +11,7 @@ import json
 import numpy as np
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
+from scipy.stats import pearsonr
 from config import TABULAR_CSV, SELECTED_VARS_JSON, RESULT_DIR, XGB_PARAMS, \
                    TRAIN_YEAR_MIN, TRAIN_YEAR_MAX
 import xgboost as xgb
@@ -50,15 +51,17 @@ for yr in fold_years:
     obs.extend(y_all[te].tolist())
 
 r2_global = r2_score(obs, preds)
+pearson_r, _ = pearsonr(obs, preds)
 rmse_global = np.sqrt(mean_squared_error(obs, preds))
 bias = np.mean(np.array(preds) - np.array(obs))
-print(f"LOYO R2={r2_global:.4f}  RMSE={rmse_global*1000:.1f}mm  Bias={bias*1000:.1f}mm")
+print(f"LOYO R2={r2_global:.4f}  R={pearson_r:.4f}  RMSE={rmse_global*1000:.1f}mm  Bias={bias*1000:.1f}mm")
 
 os.makedirs(RESULT_DIR, exist_ok=True)
 pd.DataFrame(fold_r2).to_csv(os.path.join(RESULT_DIR, 'xgboost_loyo_metrics.csv'), index=False)
 pd.DataFrame({'obs': obs, 'pred': preds}).to_csv(
     os.path.join(RESULT_DIR, 'xgboost_loyo_predictions.csv'), index=False)
 pd.DataFrame([{'model': 'xgboost', 'cv': 'LOYO',
-               'r2': r2_global, 'rmse_mm': rmse_global*1000, 'bias_mm': bias*1000}]).to_csv(
+               'r2': r2_global, 'pearson_r': pearson_r,
+               'rmse_mm': rmse_global*1000, 'bias_mm': bias*1000}]).to_csv(
     os.path.join(RESULT_DIR, 'xgboost_loyo_summary.csv'), index=False)
 print(f"Saved → {RESULT_DIR}/xgboost_loyo_*.csv")

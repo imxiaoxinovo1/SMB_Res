@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.metrics import r2_score, mean_squared_error
+from scipy.stats import pearsonr
 from config import (SEQUENCES_NPZ, RESULT_DIR, GLACIOFORMER_PARAMS,
                     TRAIN_YEAR_MIN, TRAIN_YEAR_MAX)
 from glacioformer.model import GlacioFormer
@@ -117,14 +118,16 @@ for gi, gid in enumerate(glaciers):
     log_print(f"  Fold {gi+1}/{len(glaciers)} (gid={gid}) -- R2={r2_so_far:.3f}  stopped@ep={epoch+1}")
 
 r2 = r2_score(all_obs, all_preds)
+pearson_r, _ = pearsonr(all_obs, all_preds)
 rmse = np.sqrt(mean_squared_error(all_obs, all_preds))
 bias = np.mean(np.array(all_preds) - np.array(all_obs))
-log_print(f"\nLOGO R2={r2:.4f}  RMSE={rmse*1000:.1f}mm  Bias={bias*1000:.1f}mm")
+log_print(f"\nLOGO R2={r2:.4f}  R={pearson_r:.4f}  RMSE={rmse*1000:.1f}mm  Bias={bias*1000:.1f}mm")
 
 pd.DataFrame({'obs': all_obs, 'pred': all_preds}).to_csv(
     os.path.join(RESULT_DIR, f'{tag}_logo_predictions.csv'), index=False)
 pd.DataFrame([{'model': tag, 'cv': 'LOGO',
-               'r2': r2, 'rmse_mm': rmse*1000, 'bias_mm': bias*1000}]).to_csv(
+               'r2': r2, 'pearson_r': pearson_r,
+               'rmse_mm': rmse*1000, 'bias_mm': bias*1000}]).to_csv(
     os.path.join(RESULT_DIR, f'{tag}_logo_summary.csv'), index=False)
 log_print(f"Saved to {RESULT_DIR}")
 log.close()
