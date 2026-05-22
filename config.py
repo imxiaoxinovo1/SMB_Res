@@ -34,9 +34,9 @@ ERA5_RGI02_CSV         = os.path.join(DATA_DIR, "era5_monthly_rgi02.csv")
 
 # ── 时间范围 ───────────────────────────────────────────────────────────────────
 TRAIN_YEAR_MIN    = 1950
-TRAIN_YEAR_MAX    = 2014     # 训练+交叉验证期末年，含 2014
-HOLDOUT_YEAR_MIN  = 2015     # HOLDOUT_YEAR_MIN == TRAIN_YEAR_MAX + 1，无重叠
-HOLDOUT_YEAR_MAX  = 2024
+TRAIN_YEAR_MAX    = 2023     # 扩展至 2023，包含 WGMS 2025-02b 最新观测
+HOLDOUT_YEAR_MIN  = None     # 已合并进训练集，LOYO 提供足够严格的时间验证
+HOLDOUT_YEAR_MAX  = None
 RECON_YEAR_MIN    = 1950
 RECON_YEAR_MAX    = 2024
 

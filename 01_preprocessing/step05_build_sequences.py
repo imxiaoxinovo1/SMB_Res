@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from config import (ERA5_MONTHLY_CSV, TERRAIN_CSV, SEQUENCES_NPZ,
                     MASSBAL_RGI02_CSV, STATIC_FEATURES, MONTHLY_CLIMATE_VARS,
-                    TRAIN_YEAR_MIN, TRAIN_YEAR_MAX, HOLDOUT_YEAR_MAX)
+                    TRAIN_YEAR_MIN, TRAIN_YEAR_MAX)
 
 print("=== Step 05: Build Sequence Dataset ===")
 

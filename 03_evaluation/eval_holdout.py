@@ -1,8 +1,8 @@
 # 03_evaluation/eval_holdout.py
 """
-Hold-out evaluation on 2015–2024 for XGBoost.
-Trains on 1950–2014, evaluates on 2015–2024.
-Output: results/holdout_metrics.csv
+Hold-out evaluation for XGBoost.
+仅在 HOLDOUT_YEAR_MIN / HOLDOUT_YEAR_MAX 非 None 时运行。
+当前配置已将全部观测并入训练集（TRAIN_YEAR_MAX=2023），本脚本将跳过。
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -15,7 +15,11 @@ from config import (TABULAR_CSV, SELECTED_VARS_JSON, RESULT_DIR,
                     HOLDOUT_YEAR_MIN, HOLDOUT_YEAR_MAX, XGB_PARAMS)
 import xgboost as xgb
 
-print("=== Hold-out Evaluation (2015–2024) ===")
+if HOLDOUT_YEAR_MIN is None or HOLDOUT_YEAR_MAX is None:
+    print("Hold-out 集已禁用（HOLDOUT_YEAR_MIN/MAX=None）。跳过。")
+    sys.exit(0)
+
+print(f"=== Hold-out Evaluation ({HOLDOUT_YEAR_MIN}–{HOLDOUT_YEAR_MAX}) ===")
 
 df = pd.read_csv(TABULAR_CSV)
 df_labeled = df[df['annual_balance_m'].notna()].copy()
