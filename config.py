@@ -58,7 +58,21 @@ STATIC_FEATURES = [
     'zmin_m', 'zmax_m', 'zmean_m', 'zmed_m',
     'area_km2', 'lmax_m', 'cenlat',
 ]
-N_STATIC = len(STATIC_FEATURES)   # 10
+
+# 季节聚合特征（8个）：从 tabular 数据集追加到静态分支，提供显式季节先验
+# 使 GlacioFormer 无需从注意力中从头学习季节规律
+SEASONAL_EXTRA_FEATURES = [
+    'cal_summer_t2m_mean',   # 夏季气温（消融主驱动）
+    'cal_winter_tp_sum',     # 冬季降水（积累主驱动）
+    'hyd_ablat_t2m_mean',    # 水文消融季气温
+    'hyd_accum_sf_sum',      # 积累季降雪量
+    'hyd_ablat_smlt_sum',    # 消融季融雪量
+    'ann_t2m_mean',          # 年均气温
+    'ann_tp_sum',            # 年总降水
+    'cal_summer_ssrd_sum',   # 夏季太阳辐射
+]
+
+N_STATIC = len(STATIC_FEATURES) + len(SEASONAL_EXTRA_FEATURES)   # 10 + 8 = 18
 
 # ── 日历年季节月份 ─────────────────────────────────────────────────────────────
 CAL_SUMMER_MONTHS  = [6, 7, 8]
@@ -78,8 +92,8 @@ XGB_PARAMS = dict(
 GLACIOFORMER_PARAMS = dict(
     n_dynamic_features=N_DYNAMIC,
     n_static_features=N_STATIC,
-    d_model=64, n_heads=4, n_encoder_layers=2, ff_dim=256,
-    dropout=0.15,
+    d_model=32, n_heads=4, n_encoder_layers=1, ff_dim=64,   # 缩小适配1000样本
+    dropout=0.35,                                            # 增强正则化
     batch_size=32, epochs=300, lr=1e-3,
     early_stop_patience=40, min_epochs=60,
     weight_decay=1e-4,
