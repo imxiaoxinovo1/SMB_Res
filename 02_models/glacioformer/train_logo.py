@@ -64,9 +64,22 @@ for gi, gid in enumerate(glaciers):
     if te.sum() == 0:
         continue
 
-    Xd_tr = torch.tensor(X_dyn[tr], dtype=torch.float32).to(device)
-    Xs_tr = torch.tensor(X_sta[tr], dtype=torch.float32).to(device)
-    yt_tr = torch.tensor(y[tr],     dtype=torch.float32).to(device)
+    # 从训练集中划出 val_fraction 作早停验证集（按年份随机，保证无年份泄漏）
+    val_frac = P.get('val_fraction', 0.15)
+    tr_indices = np.where(tr)[0]
+    rng = np.random.default_rng(seed=42 + gi)
+    val_size = max(1, int(len(tr_indices) * val_frac))
+    val_idx = rng.choice(tr_indices, size=val_size, replace=False)
+    fit_mask = np.ones(len(y), dtype=bool)
+    fit_mask[val_idx] = False
+    fit_mask &= tr
+
+    Xd_fit = torch.tensor(X_dyn[fit_mask], dtype=torch.float32).to(device)
+    Xs_fit = torch.tensor(X_sta[fit_mask], dtype=torch.float32).to(device)
+    yt_fit = torch.tensor(y[fit_mask],     dtype=torch.float32).to(device)
+    Xd_val = torch.tensor(X_dyn[val_idx],  dtype=torch.float32).to(device)
+    Xs_val = torch.tensor(X_sta[val_idx],  dtype=torch.float32).to(device)
+    yt_val = torch.tensor(y[val_idx],      dtype=torch.float32).to(device)
     Xd_te = torch.tensor(X_dyn[te], dtype=torch.float32).to(device)
     Xs_te = torch.tensor(X_sta[te], dtype=torch.float32).to(device)
 
@@ -81,7 +94,7 @@ for gi, gid in enumerate(glaciers):
                                   weight_decay=P['weight_decay'])
     criterion = nn.MSELoss()
 
-    loader = DataLoader(TensorDataset(Xd_tr, Xs_tr, yt_tr),
+    loader = DataLoader(TensorDataset(Xd_fit, Xs_fit, yt_fit),
                         batch_size=P['batch_size'], shuffle=True)
     best_loss, patience_cnt, best_state = float('inf'), 0, None
 
@@ -96,7 +109,7 @@ for gi, gid in enumerate(glaciers):
             continue
         model.eval()
         with torch.no_grad():
-            val_loss = criterion(model(Xd_tr, Xs_tr), yt_tr).item()
+            val_loss = criterion(model(Xd_val, Xs_val), yt_val).item()
         if val_loss < best_loss:
             best_loss = val_loss
             best_state = {k: v.clone() for k, v in model.state_dict().items()}

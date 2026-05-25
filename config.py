@@ -92,11 +92,12 @@ XGB_PARAMS = dict(
 GLACIOFORMER_PARAMS = dict(
     n_dynamic_features=N_DYNAMIC,
     n_static_features=N_STATIC,
-    d_model=32, n_heads=4, n_encoder_layers=1, ff_dim=64,   # 缩小适配1000样本
-    dropout=0.35,                                            # 增强正则化
+    d_model=48, n_heads=4, n_encoder_layers=1, ff_dim=128,  # 折中：单层+中等容量
+    dropout=0.30,
     batch_size=32, epochs=300, lr=1e-3,
-    early_stop_patience=40, min_epochs=60,
+    early_stop_patience=30, min_epochs=50,
     weight_decay=1e-4,
+    val_fraction=0.15,   # 从训练集中划出15%做早停验证集
 )
 
 assert GLACIOFORMER_PARAMS['d_model'] % GLACIOFORMER_PARAMS['n_heads'] == 0, \
