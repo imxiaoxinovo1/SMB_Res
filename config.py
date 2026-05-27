@@ -80,6 +80,20 @@ CAL_WINTER_MONTHS  = [12, 1, 2]
 HYD_ACCUM_MONTHS   = [10, 11, 12, 1, 2, 3, 4]
 HYD_ABLAT_MONTHS   = [5, 6, 7, 8, 9]
 
+# ── Random Forest 超参数 ──────────────────────────────────────────────────────
+RF_PARAMS = dict(
+    n_estimators=500, max_depth=None,
+    min_samples_leaf=2, random_state=42, n_jobs=-1,
+)
+
+# ── LSTM 超参数 ────────────────────────────────────────────────────────────────
+LSTM_PARAMS = dict(
+    hidden_dim=64, num_layers=2, dropout=0.30,
+    batch_size=128, epochs=300, lr=1e-3,
+    early_stop_patience=20, min_epochs=30,
+    weight_decay=1e-4, val_fraction=0.15,
+)
+
 # ── XGBoost 超参数 ─────────────────────────────────────────────────────────────
 XGB_PARAMS = dict(
     n_estimators=500, max_depth=6, learning_rate=0.05,
