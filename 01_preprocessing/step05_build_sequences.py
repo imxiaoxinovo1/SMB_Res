@@ -43,6 +43,7 @@ for gid, g_era5 in df_era5.groupby('glacier_id'):
         dyn = y_era5_sorted[MONTHLY_CLIMATE_VARS].values.astype(float)  # (12, 15)
         sta = sta_terrain  # (10,) — 仅地形特征，不含季节聚合
 
+        key = (gid, year)
         target = df_mb_idx.loc[key, 'annual_balance'].item() \
                  if key in df_mb_idx.index else np.nan
 
