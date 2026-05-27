@@ -1,0 +1,29 @@
+=== GlacioFormer LOYO -- variant=full ===
+Training samples: 825
+Device: cuda
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 10/62 (year=1962) -- R2=0.195
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 20/62 (year=1972) -- R2=0.149
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 30/62 (year=1982) -- R2=0.262
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 40/62 (year=1992) -- R2=0.157
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 50/62 (year=2002) -- R2=0.226
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 60/62 (year=2012) -- R2=0.272
+C:\Users\zjw31\.conda\envs\smb\Lib\site-packages\torch\nn\modules\transformer.py:379: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+  Fold 62/62 (year=2014) -- R2=0.226
+
+LOYO R2=0.2264  RMSE=876.9mm  Bias=23.7mm
+Saved ¡ú H:\Code\SMB\SMB_Res_ByClaudeV2\results/glacioformer_full_loyo_*.csv

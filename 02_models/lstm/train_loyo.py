@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import pearsonr
@@ -76,6 +77,7 @@ for yi, yr in enumerate(fold_years):
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=P['lr'],
                                   weight_decay=P['weight_decay'])
+    scheduler = CosineAnnealingLR(optimizer, T_max=P['epochs'], eta_min=P['lr'] * 0.01)
     criterion = nn.MSELoss()
     loader = DataLoader(TensorDataset(Xd_fit, Xs_fit, yt_fit),
                         batch_size=P['batch_size'], shuffle=True)
@@ -87,6 +89,7 @@ for yi, yr in enumerate(fold_years):
             optimizer.zero_grad()
             criterion(model(xd, xs), yt).backward()
             optimizer.step()
+        scheduler.step()
 
         if epoch < P['min_epochs']:
             continue
