@@ -59,8 +59,9 @@ STATIC_FEATURES = [
     'area_km2', 'lmax_m', 'cenlat',
 ]
 
-# 季节聚合特征（8个）：仅用于 tabular 模型（XGBoost/RF），不再拼入 GlacioFormer 静态分支
-# 审查发现：季节特征与月度序列高度冗余，会干扰 static-dynamic 融合学习
+# 季节聚合特征（8个）：拼入 GlacioFormer 静态分支，提供显式季节先验
+# 12步序列太短，Transformer 难以从头学习季节规律 → 需要显式聚合特征辅助
+# 实证：移除后 LOYO R² 0.376→0.335；LOGO 不受影响（季节特征对年份泛化关键）
 SEASONAL_EXTRA_FEATURES = [
     'cal_summer_t2m_mean',
     'cal_winter_tp_sum',
@@ -72,7 +73,7 @@ SEASONAL_EXTRA_FEATURES = [
     'cal_summer_ssrd_sum',
 ]
 
-N_STATIC = len(STATIC_FEATURES)   # 10（仅地形特征）
+N_STATIC = len(STATIC_FEATURES) + len(SEASONAL_EXTRA_FEATURES)   # 10 + 8 = 18
 
 # ── 日历年季节月份 ─────────────────────────────────────────────────────────────
 CAL_SUMMER_MONTHS  = [6, 7, 8]
