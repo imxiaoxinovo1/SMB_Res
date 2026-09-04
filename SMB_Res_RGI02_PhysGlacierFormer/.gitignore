@@ -1,0 +1,31 @@
+# Large external and generated data
+data/
+*.nc
+*.grib*
+*.hdf5
+*.zip
+*.tar
+*.tar.gz
+
+# Model artifacts and generated outputs
+results/
+figures/
+*.pt
+*.pth
+*.pkl
+*.npz
+*.png
+*.pdf
+
+# Large reconstruction tables
+*reconstruction*.csv
+*hybrid*.csv
+
+# Python cache and local editor files
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
