@@ -12,6 +12,7 @@ import torch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 sys.path.insert(0, os.path.join(PROJECT_DIR, "02_models"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "03_training"))
 
 from config import (  # noqa: E402
     PHYS_GLACIERFORMER_V2_PARAMS,
@@ -22,6 +23,12 @@ from config import (  # noqa: E402
     PHYS_V2_TERRAIN_CSV,
 )
 from phys_glacierformer_v2 import PhysGlacierFormerV2  # noqa: E402
+from train_tree_v2_cv import (  # noqa: E402
+    fit_model,
+    make_model,
+    monthly_physical_monotonic_constraints,
+)
+from calibrate_xgboost_v2_amplitude import fit_amplitude_calibrator  # noqa: E402
 
 
 class PhysV2PipelineTests(unittest.TestCase):
@@ -104,6 +111,35 @@ class PhysV2PipelineTests(unittest.TestCase):
                 frame[["predicted_smb_m", "predicted_smb_conservative_m"]].to_numpy()
             ).all()
         )
+
+    def test_ridge_accepts_fold_local_sample_weights(self) -> None:
+        x = np.arange(24, dtype=np.float64).reshape(8, 3)
+        y = np.linspace(-1.0, 1.0, 8)
+        weights = np.linspace(0.5, 1.5, 8)
+        model = make_model("ridge", seed=42)
+        fit_model(model, "ridge", x, y, weights)
+        prediction = model.predict(x)
+        self.assertTrue(np.isfinite(prediction).all())
+
+    def test_monotonic_constraints_encode_only_robust_seasonal_signs(self) -> None:
+        constraints = monthly_physical_monotonic_constraints(
+            ["t2m", "sf", "tp"], n_static=2, n_hypsometry=1
+        )
+        self.assertEqual(len(constraints), 39)
+        self.assertEqual(constraints[4:9], (-1, -1, -1, -1, -1))
+        self.assertEqual(constraints[12:16], (1, 1, 1, 1))
+        self.assertEqual(constraints[21:24], (1, 1, 1))
+        self.assertTrue(all(value == 0 for value in constraints[24:]))
+
+    def test_amplitude_calibration_clips_unstable_slopes(self) -> None:
+        observed = np.array([-2.0, -1.0, 0.0, 1.0])
+        predicted = observed * 0.1
+        intercept, slope, raw_slope = fit_amplitude_calibrator(
+            observed, predicted, slope_min=0.75, slope_max=1.50
+        )
+        self.assertGreater(raw_slope, 1.50)
+        self.assertEqual(slope, 1.50)
+        self.assertAlmostEqual(intercept, float(observed.mean() - slope * predicted.mean()))
 
 
 if __name__ == "__main__":

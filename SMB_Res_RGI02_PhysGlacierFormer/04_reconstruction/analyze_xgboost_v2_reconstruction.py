@@ -17,6 +17,7 @@ sys.path.insert(0, PROJECT_DIR)
 
 from config import (  # noqa: E402
     MALLES_REGION_NC,
+    PHYS_V2_GLAMBIE_COMPARISON,
     PHYS_V2_MALLES_COMPARISON,
     PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV,
     PHYS_V2_RECONSTRUCTION_OOD_SUMMARY,
@@ -26,6 +27,18 @@ from config import (  # noqa: E402
     RGI02_SHP,
     ZEMP_RGI02_CSV,
 )
+
+
+GLAMBIE_RGI02 = {
+    "start_year": 2000,
+    "end_year": 2023,
+    "specific_mass_change_mwe_yr": -0.68,
+    "specific_uncertainty_mwe_yr": 0.06,
+    "mass_change_gt_yr": -9.0,
+    "mass_change_uncertainty_gt_yr": 0.9,
+    "area_2000_km2": 14_602.0,
+    "source": "GlaMBIE Team (2025), Nature, doi:10.1038/s41586-024-08545-z, Table 1",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -132,6 +145,43 @@ def trend_per_decade(year: pd.Series, values: pd.Series, start_year: int = 1980)
     mask = year >= start_year
     result = linregress(year[mask], values[mask])
     return float(result.slope * 10.0), float(result.pvalue)
+
+
+def glambie_period_comparison(regional: pd.DataFrame) -> pd.DataFrame:
+    """Compare period means only; annual GlaMBIE data are not bundled locally."""
+    reference = GLAMBIE_RGI02
+    period = regional[regional["year"].between(reference["start_year"], reference["end_year"])]
+    if len(period) != reference["end_year"] - reference["start_year"] + 1:
+        raise RuntimeError("Reconstruction does not fully cover the GlaMBIE comparison period.")
+
+    rows = []
+    for label in ["raw", "calibrated"]:
+        specific = float(period[f"{label}_area_weighted_smb_all_m"].mean())
+        mass = float(period[f"{label}_mass_change_all_gt"].mean())
+        rows.append(
+            {
+                "comparison": f"{label}_all_rgi02",
+                "start_year": reference["start_year"],
+                "end_year": reference["end_year"],
+                "model_specific_mass_change_mwe_yr": specific,
+                "glambie_specific_mass_change_mwe_yr": reference["specific_mass_change_mwe_yr"],
+                "glambie_specific_uncertainty_mwe_yr": reference["specific_uncertainty_mwe_yr"],
+                "specific_difference_mwe_yr": specific - reference["specific_mass_change_mwe_yr"],
+                "model_mass_change_gt_yr": mass,
+                "glambie_mass_change_gt_yr": reference["mass_change_gt_yr"],
+                "glambie_mass_change_uncertainty_gt_yr": reference["mass_change_uncertainty_gt_yr"],
+                "mass_difference_gt_yr": mass - reference["mass_change_gt_yr"],
+                "model_fixed_area_km2": float(period["inventory_area_all_km2"].mean()),
+                "glambie_area_2000_km2": reference["area_2000_km2"],
+                "source": reference["source"],
+                "interpretation": (
+                    "period-mean external consistency only; GlaMBIE combines glaciological, "
+                    "DEM-differencing, altimetry and other regional inputs and is not fully "
+                    "independent of WGMS or Hugonnet; model uses fixed RGI v7 geometry"
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def main() -> None:
@@ -313,6 +363,8 @@ def main() -> None:
             }
         )
 
+    glambie_comparison = glambie_period_comparison(regional)
+
     os.makedirs(os.path.dirname(PHYS_V2_RECONSTRUCTION_QC_SUMMARY), exist_ok=True)
     pd.DataFrame(qc_rows).to_csv(PHYS_V2_RECONSTRUCTION_QC_SUMMARY, index=False)
     ood.to_csv(PHYS_V2_RECONSTRUCTION_OOD_SUMMARY, index=False)
@@ -325,17 +377,21 @@ def main() -> None:
         pd.DataFrame(zemp_metric_rows).to_csv(stream, index=False)
         stream.write("\n# annual_series\n")
         zemp_comparison.to_csv(stream, index=False)
+    glambie_comparison.to_csv(PHYS_V2_GLAMBIE_COMPARISON, index=False)
 
     print(pd.DataFrame(qc_rows).to_string(index=False))
     print("\nMalles & Marzeion comparison (full RGI02 only):")
     print(pd.DataFrame(metric_rows).to_string(index=False))
     print("\nZemp et al. comparison (shared WGMS information; not independent):")
     print(pd.DataFrame(zemp_metric_rows).to_string(index=False))
+    print("\nGlaMBIE period-mean consistency (shared source information; not independent):")
+    print(glambie_comparison.to_string(index=False))
     print(f"Saved QC -> {PHYS_V2_RECONSTRUCTION_QC_SUMMARY}")
     print(f"Saved OOD summary -> {PHYS_V2_RECONSTRUCTION_OOD_SUMMARY}")
     print(f"Saved regional series -> {PHYS_V2_RECONSTRUCTION_REGIONAL_CSV}")
     print(f"Saved external comparison -> {PHYS_V2_MALLES_COMPARISON}")
     print(f"Saved Zemp consistency comparison -> {PHYS_V2_ZEMP_COMPARISON}")
+    print(f"Saved GlaMBIE period comparison -> {PHYS_V2_GLAMBIE_COMPARISON}")
     if not complete:
         raise RuntimeError("Reconstruction failed the expected glacier-year completeness checks.")
 

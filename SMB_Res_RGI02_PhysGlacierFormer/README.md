@@ -63,6 +63,8 @@ Run from this directory:
 & C:\Users\zjw31\.conda\envs\smb\python.exe 05_figures\plot_xgboost_feature_contributions.py
 ```
 
+The cross-fitted two-stage experiment is documented but not selected: it improves LOGO from R2=0.624 to 0.644 with a paired confidence interval crossing zero, while reducing LOYO to R2=0.551-0.560.
+
 ## Final Model And Reconstruction
 
 ```powershell
@@ -80,6 +82,7 @@ The corrected hydrological reconstruction begins in 1951 because ERA5-Land begin
 - Report out-of-fold metrics, never training-set metrics.
 - Treat Hugonnet residual reduction after fitting as calibration consistency, not independent validation.
 - Treat Malles & Marzeion as an external model comparison, not observations.
+- Treat the GlaMBIE Table-1 comparison as period-mean consistency with shared source information, not independent annual validation.
 - Describe the reconstruction as reference-geometry SMB unless evolving glacier geometry is explicitly modeled.
 - Do not claim seasonal skill from annual skill; winter and summer errors can cancel.
 - Treat SHAP contributions as descriptive model interpretation, not causal attribution.

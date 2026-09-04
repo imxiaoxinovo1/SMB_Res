@@ -19,6 +19,7 @@ sys.path.insert(0, PROJECT_DIR)
 from config import (  # noqa: E402
     FIG_DIR,
     MALLES_REGION_NC,
+    PHYS_V2_GLAMBIE_COMPARISON,
     PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV,
     RECONSTRUCTION_DIR,
     RGI02_SHP,
@@ -42,6 +43,7 @@ COLOR_MALLES = "#355c7d"
 COLOR_RAW = "#d17a22"
 COLOR_CONSERVATIVE = "#2b8c6f"
 COLOR_BAND = "#b8c7d9"
+COLOR_GLAMBIE = "#6f6658"
 
 # Full RGI02 extent used by the established spatial-distribution figure.
 # Wider contextual extent lets the true lon/lat aspect fill the landscape panel
@@ -53,18 +55,21 @@ RGI_EDGE = "#3b7d44"
 
 
 def load_malles_region02() -> pd.DataFrame:
-    """Load Malles & Marzeion RGI02 ensemble regional mass change.
+    """Load Malles & Marzeion RGI02 ensemble regional mass change."""
+    with Dataset(MALLES_REGION_NC) as dataset:
+        region_idx = np.where(dataset.variables["Region"][:] == 2)[0][0]
+        mass_change = np.array(
+            dataset.variables["Mass change"][:, :, region_idx], dtype=float
+        )
+        unc = np.array(
+            dataset.variables["Mass change uncertainty"][:, :, region_idx], dtype=float
+        )
+        time_range = str(getattr(dataset.variables["Time"], "range", "1901 - 2018"))
 
-    The supplementary region file contains 118 time steps. For the published
-    twentieth-century reconstruction file this corresponds to 1901-2018.
-    """
-    ds = Dataset(MALLES_REGION_NC)
-    region_idx = np.where(ds.variables["Region"][:] == 2)[0][0]
-    mass_change = np.array(ds.variables["Mass change"][:, :, region_idx], dtype=float)
-    unc = np.array(ds.variables["Mass change uncertainty"][:, :, region_idx], dtype=float)
-    ds.close()
-
-    years = np.arange(1901, 1901 + mass_change.shape[1])
+    start_year, end_year = [int(value.strip()) for value in time_range.split("-")]
+    years = np.arange(start_year, end_year + 1)
+    if mass_change.shape[1] != len(years):
+        raise RuntimeError("Malles time metadata does not match the time dimension.")
     valid = ~np.all(np.isnan(mass_change), axis=0)
     years = years[valid]
     mass_change = mass_change[:, valid]
@@ -325,6 +330,7 @@ def main() -> None:
 
     transfer = load_hugonnet_temporal_transfer()
     transfer_crossfit = load_hugonnet_crossfit()
+    glambie = pd.read_csv(PHYS_V2_GLAMBIE_COMPARISON).iloc[0]
     offset_once = pd.read_csv(PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV).drop_duplicates("rgi_id")
 
     fig = plt.figure(figsize=(11.2, 7.4))
@@ -358,6 +364,26 @@ def main() -> None:
     ax.plot(malles["year"], malles["malles_mass_change_gt"], color=COLOR_MALLES, lw=1.4, label="Malles & Marzeion")
     ax.plot(recon["year"], recon["raw_mass_change_gt"], color=COLOR_RAW, lw=1.3, label="Raw reconstruction")
     ax.plot(recon["year"], recon["conservative_mass_change_gt"], color=COLOR_CONSERVATIVE, lw=1.5, label="Conservative calibration")
+    glambie_years = [int(glambie["start_year"]), int(glambie["end_year"])]
+    glambie_mean = float(glambie["glambie_mass_change_gt_yr"])
+    glambie_uncertainty = float(glambie["glambie_mass_change_uncertainty_gt_yr"])
+    ax.fill_between(
+        glambie_years,
+        [glambie_mean - glambie_uncertainty] * 2,
+        [glambie_mean + glambie_uncertainty] * 2,
+        color=COLOR_GLAMBIE,
+        alpha=0.12,
+        zorder=1,
+    )
+    ax.plot(
+        glambie_years,
+        [glambie_mean] * 2,
+        color=COLOR_GLAMBIE,
+        lw=1.2,
+        ls=(0, (4, 2)),
+        label="GlaMBIE 2000-2023 period mean",
+        zorder=2,
+    )
     ax.axhline(0, color="0.3", lw=0.7)
     ax.set_title("(a) Regional annual mass change")
     ax.set_ylabel("Gt yr$^{-1}$")
@@ -464,7 +490,8 @@ def main() -> None:
     fig.text(
         0.5,
         0.025,
-        "Mass-change comparison: fixed RGI v7 area in this study; evolving glacier area in Malles & Marzeion.",
+        "Mass-change comparison: fixed RGI v7 area in this study; evolving area in Malles & Marzeion; "
+        "GlaMBIE line denotes a period mean, not annual values.",
         ha="center",
         va="bottom",
         fontsize=7.2,

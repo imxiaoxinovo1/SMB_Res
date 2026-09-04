@@ -9,8 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import linregress, pearsonr
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from scipy.stats import linregress
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -31,12 +30,21 @@ def regression_metrics(obs: np.ndarray, pred: np.ndarray) -> dict[str, float]:
     obs, pred = obs[valid], pred[valid]
     if len(obs) < 2:
         return {name: np.nan for name in ["r2", "pearson_r", "rmse_mm", "mae_mm", "bias_mm"]}
+    residual = pred - obs
+    obs_centered = obs - np.mean(obs)
+    pred_centered = pred - np.mean(pred)
+    sum_squared_observed = float(np.sum(obs_centered**2))
+    correlation_denominator = float(
+        np.sqrt(sum_squared_observed * np.sum(pred_centered**2))
+    )
     return {
-        "r2": float(r2_score(obs, pred)),
-        "pearson_r": float(pearsonr(obs, pred).statistic),
-        "rmse_mm": float(np.sqrt(mean_squared_error(obs, pred)) * 1000.0),
-        "mae_mm": float(mean_absolute_error(obs, pred) * 1000.0),
-        "bias_mm": float(np.mean(pred - obs) * 1000.0),
+        "r2": float(1.0 - np.sum(residual**2) / sum_squared_observed),
+        "pearson_r": float(
+            np.sum(obs_centered * pred_centered) / correlation_denominator
+        ) if correlation_denominator > 0 else np.nan,
+        "rmse_mm": float(np.sqrt(np.mean(residual**2)) * 1000.0),
+        "mae_mm": float(np.mean(np.abs(residual)) * 1000.0),
+        "bias_mm": float(np.mean(residual) * 1000.0),
     }
 
 
@@ -79,16 +87,19 @@ def bootstrap_intervals(
     groups = frame[group_column].dropna().unique()
     if len(groups) < 2:
         return {}
-    grouped = {group: part for group, part in frame.groupby(group_column)}
+    group_indices = {
+        group: indices.to_numpy()
+        for group, indices in frame.groupby(group_column, sort=False).groups.items()
+    }
+    observed = frame["obs_annual"].to_numpy()
+    predicted = frame["pred_annual"].to_numpy()
     values: dict[str, list[float]] = {
         name: [] for name in ["r2", "pearson_r", "rmse_mm", "mae_mm", "bias_mm"]
     }
     for _ in range(n_bootstrap):
         sampled = rng.choice(groups, size=len(groups), replace=True)
-        boot = pd.concat([grouped[group] for group in sampled], ignore_index=True)
-        metrics = regression_metrics(
-            boot["obs_annual"].to_numpy(), boot["pred_annual"].to_numpy()
-        )
+        indices = np.concatenate([group_indices[group] for group in sampled])
+        metrics = regression_metrics(observed[indices], predicted[indices])
         for name, value in metrics.items():
             if np.isfinite(value):
                 values[name].append(value)
@@ -133,14 +144,20 @@ def paired_bootstrap_difference(
     right = reference[keys + ["pred_annual"]].rename(columns={"pred_annual": "pred_reference"})
     paired = candidate.merge(right, on=keys, how="inner", validate="one_to_one")
     groups = paired[group_column].dropna().unique()
-    grouped = {group: part for group, part in paired.groupby(group_column)}
+    group_indices = {
+        group: indices.to_numpy()
+        for group, indices in paired.groupby(group_column, sort=False).groups.items()
+    }
+    observed = paired["obs_annual"].to_numpy()
+    candidate_prediction = paired["pred_annual"].to_numpy()
+    reference_prediction = paired["pred_reference"].to_numpy()
     rmse_delta, r2_delta = [], []
     for _ in range(n_bootstrap):
         sampled = rng.choice(groups, size=len(groups), replace=True)
-        boot = pd.concat([grouped[group] for group in sampled], ignore_index=True)
-        obs = boot.obs_annual.to_numpy()
-        candidate_metrics = regression_metrics(obs, boot.pred_annual.to_numpy())
-        reference_metrics = regression_metrics(obs, boot.pred_reference.to_numpy())
+        indices = np.concatenate([group_indices[group] for group in sampled])
+        obs = observed[indices]
+        candidate_metrics = regression_metrics(obs, candidate_prediction[indices])
+        reference_metrics = regression_metrics(obs, reference_prediction[indices])
         rmse_delta.append(candidate_metrics["rmse_mm"] - reference_metrics["rmse_mm"])
         r2_delta.append(candidate_metrics["r2"] - reference_metrics["r2"])
     rmse_ci = np.quantile(rmse_delta, [0.025, 0.975])
@@ -216,11 +233,13 @@ def main() -> None:
         reference = run_frames[(reference_name, cv)]
         group_column = bootstrap_cluster_column(cv)
         for (model, model_cv), frame in run_frames.items():
-            if model_cv != cv or model == reference_name or len(frame) != expected_n:
+            if model_cv != cv or model == reference_name or len(frame) != len(reference):
                 continue
             differences = paired_bootstrap_difference(
                 frame, reference, group_column, args.bootstrap, rng
             )
+            if differences["n_common"] != len(reference):
+                continue
             paired_rows.append(
                 {"model": model, "reference": reference_name, "cv": cv, **differences}
             )

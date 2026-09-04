@@ -1,12 +1,9 @@
 # Training
 
-Training scripts should write metrics to method-specific result folders:
+Training scripts write metrics to run-specific folders under:
 
 ```text
-results/baseline/
-results/hypsometry/
-results/remote_sensing/
-results/ensemble/
+results/phys_v2/<model-and-feature-tag>/
 ```
 
 Required validation protocols:
@@ -19,5 +16,7 @@ Required validation protocols:
 The publication-facing annual model is the corrected regularized XGBoost model. PhysGlacierFormer is retained as a seasonal-process benchmark. All preprocessing, imputation, sample weighting, and hyperparameter selection must be fitted without held-out labels.
 
 Corrected-pipeline mean, Ridge, Random Forest, Extra Trees, and LightGBM baselines are available through `train_tree_v2_cv.py`. Use identical feature sets and outer folds when comparing algorithms.
+
+`train_twostage_xgboost_v2.py` is a leakage-safe negative-result ablation. Its glacier-mean stage is cross-fitted inside every outer fold. It improves LOGO only within uncertainty and degrades LOYO, so it must not replace the primary XGBoost reconstruction.
 
 Do not save metrics directly into the project root.

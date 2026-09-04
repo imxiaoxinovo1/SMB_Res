@@ -18,9 +18,15 @@ All methods use the corrected `phys_v2` dataset and identical outer folds:
 4. 50 km buffered LOGO, +/-1-year buffered LOYO, rolling-origin validation, and LOSO stress tests.
 5. Cluster-bootstrap confidence intervals and extreme-tail diagnostics.
 
+The cross-fitted two-stage spatial-mean/anomaly experiment is retained as a negative-result ablation: it improves LOGO but reduces LOYO and is not eligible as the primary model without a nested selection result that reverses this trade-off.
+
+Season-selective monotonic constraints are retained as a physics-guided sensitivity experiment. Their 1-4 mm changes in LOGO, LOYO, and forward RMSE are not statistically decisive, so they do not replace the unconstrained primary model.
+
+Nested linear amplitude calibration is also rejected: it nearly removes LOYO mean bias but its RMSE improvement is small and its paired bootstrap interval crosses zero.
+
 ## Reconstruction Evaluation
 
-Publish raw and conservatively Hugonnet-calibrated products. Treat Hugonnet transfer as sensitivity evidence, Malles & Marzeion as external model intercomparison, and Zemp et al. as a non-independent consistency check. Report out-of-domain inventory coverage and fixed-reference-geometry limitations.
+Publish raw and conservatively Hugonnet-calibrated products. Treat Hugonnet transfer as sensitivity evidence, Malles & Marzeion as external model intercomparison, and Zemp et al. and GlaMBIE as shared-information consistency checks. The bundled GlaMBIE benchmark covers the 2000-2023 period mean only; annual data must be acquired before reporting annual skill. Report out-of-domain inventory coverage and fixed-reference-geometry limitations.
 
 ## Remaining Data Experiment
 

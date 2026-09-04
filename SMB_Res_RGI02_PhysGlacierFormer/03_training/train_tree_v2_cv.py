@@ -1,4 +1,4 @@
-"""Tree-model baselines on the corrected PhysGlacierFormer v2 dataset."""
+"""Classical-model baselines on the corrected PhysGlacierFormer v2 dataset."""
 from __future__ import annotations
 
 import argparse
@@ -160,6 +160,26 @@ def physical_seasonal_indices(
     return output
 
 
+def monthly_physical_monotonic_constraints(
+    feature_names: list[str],
+    n_static: int,
+    n_hypsometry: int,
+    n_extra_dynamic: int = 0,
+) -> tuple[int, ...]:
+    """Encode only robust seasonal signs; leave ambiguous predictors unconstrained."""
+    constraints: list[int] = []
+    for name in feature_names:
+        for month in range(1, 13):
+            value = 0
+            if name in {"t2m", "t2m_anomaly", "ssrd", "ssrd_anomaly"} and 5 <= month <= 9:
+                value = -1
+            elif name in {"sf", "sf_anomaly"} and (month >= 10 or month <= 4):
+                value = 1
+            constraints.append(value)
+    constraints.extend([0] * (n_extra_dynamic + n_static + n_hypsometry))
+    return tuple(constraints)
+
+
 def make_model(name: str, seed: int, xgb_profile: str = "reference"):
     if name == "dummy":
         return DummyRegressor(strategy="mean")
@@ -220,6 +240,21 @@ def make_model(name: str, seed: int, xgb_profile: str = "reference"):
             verbosity=-1,
         )
     raise ValueError(name)
+
+
+def fit_model(
+    model,
+    model_name: str,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    sample_weight: np.ndarray | None,
+):
+    """Fit estimators while routing weights through sklearn pipelines correctly."""
+    if sample_weight is None:
+        return model.fit(x_train, y_train)
+    if model_name == "ridge":
+        return model.fit(x_train, y_train, ridge__sample_weight=sample_weight)
+    return model.fit(x_train, y_train, sample_weight=sample_weight)
 
 
 def build_sample_weights(
@@ -298,6 +333,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--forward-start-year", type=int, default=1980)
     parser.add_argument("--forward-min-train-samples", type=int, default=100)
     parser.add_argument("--spatial-buffer-km", type=float, default=50.0)
+    parser.add_argument(
+        "--monotonic-physics",
+        action="store_true",
+        help="Constrain ablation-season temperature/radiation and accumulation-season snowfall signs.",
+    )
     return parser.parse_args()
 
 
@@ -309,6 +349,7 @@ def main() -> None:
     indices = [stored.index(name) for name in selected]
 
     selected_dynamic = data["X_dyn"][:, :, indices]
+    n_extra_dynamic = 0
     if args.representation in {"monthly", "monthly_phys"}:
         dynamic = calendar_flatten(selected_dynamic, data["month_ids"])
         if args.representation == "monthly_phys":
@@ -316,6 +357,7 @@ def main() -> None:
                 selected_dynamic, data["month_ids"], selected
             )
             dynamic = np.column_stack([dynamic, physical])
+            n_extra_dynamic = physical.shape[1]
     else:
         dynamic = seasonal_aggregate(selected_dynamic, data["month_ids"], selected)
     stored_static = [str(name) for name in data["static_features"]]
@@ -383,11 +425,28 @@ def main() -> None:
         x_train = np.where(np.isnan(x[train]), medians, x[train])
         x_test = np.where(np.isnan(x[test]), medians, x[test])
         model = make_model(args.model, args.seed + fold_index, args.xgb_profile)
+        if args.monotonic_physics:
+            if args.model != "xgboost" or args.representation not in {"monthly", "monthly_phys"}:
+                raise ValueError("Physical monotonic constraints require monthly XGBoost.")
+            constraints = monthly_physical_monotonic_constraints(
+                selected,
+                n_static=static.shape[1],
+                n_hypsometry=0 if args.no_hypsometry else components[-1].shape[1],
+                n_extra_dynamic=n_extra_dynamic,
+            )
+            if len(constraints) != x.shape[1]:
+                raise RuntimeError("Monotonic constraint count does not match the feature matrix.")
+            model.set_params(monotone_constraints=constraints)
         weights = build_sample_weights(
             rgi_ids, annual_uncertainty, y, train, args.sample_weight
         )
-        fit_kwargs = {} if weights is None else {"sample_weight": weights[train]}
-        model.fit(x_train, y[train], **fit_kwargs)
+        fit_model(
+            model,
+            args.model,
+            x_train,
+            y[train],
+            None if weights is None else weights[train],
+        )
         predictions[test] = model.predict(x_test)
         if args.cv == "forward":
             seen_in_prior_training[test] = np.isin(rgi_ids[test], np.unique(rgi_ids[train]))
@@ -397,9 +456,10 @@ def main() -> None:
     weight_tag = "" if args.sample_weight == "none" else f"_w-{args.sample_weight}"
     seed_tag = "" if args.seed == 42 else f"_seed{args.seed}"
     profile_tag = "" if args.model != "xgboost" or args.xgb_profile == "reference" else f"_p-{args.xgb_profile}"
+    monotonic_tag = "_mono-physics" if args.monotonic_physics else ""
     tag = (
         f"{args.model}_v2_{args.feature_set}_{args.representation}_"
-        f"{args.static_set}_{hyp_tag}{weight_tag}{profile_tag}{seed_tag}"
+        f"{args.static_set}_{hyp_tag}{weight_tag}{profile_tag}{monotonic_tag}{seed_tag}"
     )
     result_dir = os.path.join(PHYS_V2_RESULT_DIR, tag)
     os.makedirs(result_dir, exist_ok=True)

@@ -105,6 +105,9 @@ PHYS_V2_MALLES_COMPARISON = os.path.join(
 PHYS_V2_ZEMP_COMPARISON = os.path.join(
     RESULT_DIR, "reconstruction", "xgboost_v2_zemp_comparison.csv"
 )
+PHYS_V2_GLAMBIE_COMPARISON = os.path.join(
+    RESULT_DIR, "reconstruction", "xgboost_v2_glambie_period_comparison.csv"
+)
 PHYS_V2_INTERVAL_CALIBRATION = os.path.join(
     PHYS_V2_RESULT_DIR, "publication_evaluation", "prediction_interval_calibration.csv"
 )
