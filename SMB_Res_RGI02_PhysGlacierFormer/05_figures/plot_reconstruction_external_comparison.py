@@ -30,6 +30,9 @@ OUT_METRICS_CSV = os.path.join(FIG_DIR, "regional_mass_change_comparison_metrics
 HUGONNET_TRANSFER_CSV = os.path.join(
     RECONSTRUCTION_DIR, "hugonnet_temporal_transfer_xgboost_v2.csv"
 )
+HUGONNET_TRANSFER_CROSSFIT_CSV = os.path.join(
+    RECONSTRUCTION_DIR, "hugonnet_temporal_transfer_xgboost_v2_crossfit.csv"
+)
 NATURAL_EARTH_DIR = r"H:\Code\SMB\Map\50m_physical"
 NE_LAND_SHP = os.path.join(NATURAL_EARTH_DIR, "ne_50m_land.shp")
 NE_COASTLINE_SHP = os.path.join(NATURAL_EARTH_DIR, "ne_50m_coastline.shp")
@@ -107,6 +110,14 @@ def load_hugonnet_temporal_transfer() -> pd.DataFrame:
     if not required.issubset(frame.columns):
         raise RuntimeError(f"Hugonnet temporal-transfer file lacks {sorted(required - set(frame.columns))}")
     return frame.sort_values("shrink_factor")
+
+
+def load_hugonnet_crossfit() -> pd.Series:
+    frame = pd.read_csv(HUGONNET_TRANSFER_CROSSFIT_CSV)
+    overall = frame[frame["scope"] == "overall_cross_fitted"]
+    if len(overall) != 1:
+        raise RuntimeError("Expected one overall glacier-cross-fitted Hugonnet row.")
+    return overall.iloc[0]
 
 
 def weighted_corr_rmse(obs: np.ndarray, pred: np.ndarray) -> tuple[float, float, float]:
@@ -313,6 +324,7 @@ def main() -> None:
     overlap_end = int(comp["year"].max())
 
     transfer = load_hugonnet_temporal_transfer()
+    transfer_crossfit = load_hugonnet_crossfit()
     offset_once = pd.read_csv(PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV).drop_duplicates("rgi_id")
 
     fig = plt.figure(figsize=(11.2, 7.4))
@@ -404,11 +416,12 @@ def main() -> None:
         label="95% glacier bootstrap CI",
     )
     ax.plot(x, rmse, marker="o", color=COLOR_CONSERVATIVE, lw=1.7, label="2010-2020 RMSE")
-    best_index = int(np.argmin(rmse))
+    selected_shrink = float(transfer_crossfit["selected_shrink"])
+    selected_rmse = float(transfer_crossfit["rmse_mwe_yr"])
     ax.scatter(
-        [x[best_index]], [rmse[best_index]], s=48, marker="D", color="#a51c30",
+        [selected_shrink], [selected_rmse], s=48, marker="D", color="#a51c30",
         edgecolor="white", linewidth=0.6, zorder=4,
-        label=f"Minimum transfer RMSE (shrink={x[best_index]:.2f})",
+        label=f"5-fold glacier cross-fit (shrink={selected_shrink:.2f})",
     )
     ax.axhline(rmse[0], color="0.45", lw=0.9, ls="--", label="No-calibration RMSE")
     ax.set_title("(c) Hugonnet temporal-transfer sensitivity")
