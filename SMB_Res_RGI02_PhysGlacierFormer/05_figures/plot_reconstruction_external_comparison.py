@@ -15,11 +15,14 @@ from matplotlib.ticker import MaxNLocator
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_DIR)
+sys.path.insert(0, os.path.join(PROJECT_DIR, "04_reconstruction"))
+
+from analyze_xgboost_v2_reconstruction import cumulative_ensemble_summary  # noqa: E402
 
 from config import (  # noqa: E402
     FIG_DIR,
     MALLES_REGION_NC,
-    PHYS_V2_GLAMBIE_COMPARISON,
+    PHYS_V2_GLAMBIE_ANNUAL_SERIES,
     PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV,
     RECONSTRUCTION_DIR,
     RGI02_SHP,
@@ -28,6 +31,7 @@ from config import (  # noqa: E402
 OUT_PNG = os.path.join(FIG_DIR, "fig_reconstruction_external_comparison.png")
 OUT_CSV = os.path.join(FIG_DIR, "regional_mass_change_comparison.csv")
 OUT_METRICS_CSV = os.path.join(FIG_DIR, "regional_mass_change_comparison_metrics.csv")
+OUT_GLAMBIE_PNG = os.path.join(FIG_DIR, "fig_glambie_annual_comparison.png")
 HUGONNET_TRANSFER_CSV = os.path.join(
     RECONSTRUCTION_DIR, "hugonnet_temporal_transfer_xgboost_v2.csv"
 )
@@ -54,7 +58,7 @@ RGI_FILL = "#a8d5a2"
 RGI_EDGE = "#3b7d44"
 
 
-def load_malles_region02() -> pd.DataFrame:
+def load_malles_region02(cumulative_start: int, cumulative_end: int) -> pd.DataFrame:
     """Load Malles & Marzeion RGI02 ensemble regional mass change."""
     with Dataset(MALLES_REGION_NC) as dataset:
         region_idx = np.where(dataset.variables["Region"][:] == 2)[0][0]
@@ -78,15 +82,27 @@ def load_malles_region02() -> pd.DataFrame:
     ens_p05 = np.nanpercentile(mass_change, 5, axis=0)
     ens_p95 = np.nanpercentile(mass_change, 95, axis=0)
     unc_mean = np.nanmean(unc, axis=0)
-    return pd.DataFrame(
+    frame = pd.DataFrame(
         {
             "year": years,
             "malles_mass_change_gt": ens_mean,
             "malles_p05_gt": ens_p05,
             "malles_p95_gt": ens_p95,
             "malles_unc_mean_gt": unc_mean,
+            "malles_n_available_forcings": np.isfinite(mass_change).sum(axis=0),
         }
     )
+    period = (years >= cumulative_start) & (years <= cumulative_end)
+    if not period.any() or not np.all(np.diff(years[period]) == 1):
+        raise ValueError("Malles cumulative years must be nonempty and contiguous.")
+    for column, values in cumulative_ensemble_summary(mass_change[:, period]).items():
+        frame[column] = np.nan
+        frame.loc[period, column] = values
+    complete = np.isfinite(mass_change[:, period]).all(axis=1)
+    frame["malles_n_complete_forcings"] = int(complete.sum())
+    frame["malles_complete_cohort_annual_gt"] = np.nan
+    frame.loc[period, "malles_complete_cohort_annual_gt"] = mass_change[complete][:, period].mean(axis=0)
+    return frame
 
 
 def load_reconstruction_region() -> pd.DataFrame:
@@ -156,6 +172,10 @@ def build_metric_rows(comp: pd.DataFrame) -> pd.DataFrame:
                 "mae_gt": float(np.mean(np.abs(pred - obs))),
                 "cumulative_model_gt": float(np.sum(pred)),
                 "cumulative_malles_gt": float(np.sum(obs)),
+                "malles_annual_member_count_min": int(comp["malles_n_available_forcings"].min()),
+                "malles_annual_member_count_max": int(comp["malles_n_available_forcings"].max()),
+                "malles_complete_forcing_count": int(comp["malles_n_complete_forcings"].iloc[0]),
+                "cumulative_malles_complete_cohort_gt": float(comp["malles_complete_cohort_annual_gt"].sum()),
             }
         )
     return pd.DataFrame(rows)
@@ -281,6 +301,50 @@ def padded_limits(
     return vmin - pad, vmax + pad
 
 
+def plot_glambie_diagnostics(frame: pd.DataFrame) -> None:
+    """Show annual variability and signed errors without treating shared data as a holdout."""
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.2))
+    fig.subplots_adjust(left=0.07, right=0.985, bottom=0.27, top=0.90, wspace=0.28)
+    years = frame["year"].to_numpy()
+    reference = frame["glambie_combined_mwe"].to_numpy()
+    error = frame["glambie_combined_mwe_errors"].to_numpy()
+    ax = axes[0]
+    ax.fill_between(years, reference - error, reference + error, color="0.7", alpha=0.3)
+    ax.plot(years, reference, "o-", ms=3, color="0.2", lw=1.3, label="GlaMBIE combined")
+    altimetry = frame["glambie_altimetry_annual_variability"].eq(1)
+    ax.plot(years[altimetry], frame.loc[altimetry, "glambie_altimetry_mwe"],
+            "s:", ms=3, color=COLOR_MALLES, lw=1, label="GlaMBIE altimetry component")
+    for label, color, name in [
+        ("raw", COLOR_RAW, "Raw reconstruction"),
+        ("calibrated", COLOR_CONSERVATIVE, "Conservative calibration"),
+    ]:
+        predicted = frame[f"{label}_area_weighted_smb_all_m"].to_numpy()
+        ax.plot(years, predicted, color=color, lw=1.5, label=name)
+        axes[1].plot(years, predicted - reference, "o-", color=color, ms=3, lw=1.3, label=name)
+    ax.set_title("(a) Regional annual specific mass change")
+    ax.set_ylabel("m w.e. yr$^{-1}$")
+    ax.legend(frameon=False, fontsize=7.5, loc="lower left")
+    axes[1].set_title("(b) Reconstruction minus GlaMBIE combined")
+    axes[1].set_ylabel("Residual (m w.e. yr$^{-1}$)")
+    axes[1].axvspan(2019.5, 2023.5, color="#f5e2c1", alpha=0.45, zorder=0)
+    axes[1].text(0.97, 0.05, "2020-2023: 4-year diagnostic\nPositive residual = underestimated mass loss",
+                 transform=axes[1].transAxes, ha="right", va="bottom", fontsize=7.5)
+    axes[1].legend(frameon=False, fontsize=7.5, loc="upper left")
+    for ax in axes:
+        ax.axhline(0, color="0.45", lw=0.7)
+        ax.set_xlim(1999.5, 2023.5)
+        ax.set_xticks([2000, 2005, 2010, 2015, 2020, 2023])
+        ax.set_xlabel("Hydrological end year (October-September)")
+    fig.text(0.5, 0.055,
+             "GlaMBIE shares glaciological/geodetic inputs; comparisons assess external consistency. "
+             "Grey shading: reported GlaMBIE uncertainty.\n"
+             "This study uses fixed RGI v7 geometry; GlaMBIE uses evolving area. "
+             "Altimetry is shown only where it provides its own annual variability.",
+             ha="center", va="bottom", fontsize=7.3, color="0.35")
+    fig.savefig(OUT_GLAMBIE_PNG, dpi=300)
+    plt.close(fig)
+
+
 def main() -> None:
     os.makedirs(FIG_DIR, exist_ok=True)
     plt.rcParams.update(
@@ -295,7 +359,7 @@ def main() -> None:
     )
 
     recon = load_reconstruction_region()
-    malles = load_malles_region02()
+    malles = load_malles_region02(int(recon.year.min()), int(recon.year.max()))
     merged = recon.merge(malles, on="year", how="left")
     merged["raw_cumulative_gt"] = merged["raw_mass_change_gt"].cumsum()
     merged["conservative_cumulative_gt"] = merged["conservative_mass_change_gt"].cumsum()
@@ -311,9 +375,8 @@ def main() -> None:
         overlap, "conservative_mass_change_gt"
     ].cumsum()
     mm = malles[malles["year"].between(recon["year"].min(), recon["year"].max())].copy()
-    mm["malles_cumulative_gt"] = mm["malles_mass_change_gt"].cumsum()
-    mm["malles_p05_cumulative_gt"] = mm["malles_p05_gt"].cumsum()
-    mm["malles_p95_cumulative_gt"] = mm["malles_p95_gt"].cumsum()
+    mm["malles_available_mean_cumulative_gt"] = mm["malles_mass_change_gt"].cumsum()
+    complete_count = int(mm["malles_n_complete_forcings"].iloc[0])
 
     comp = merged[merged["malles_mass_change_gt"].notna()].copy()
     raw_r, raw_rmse, raw_bias = weighted_corr_rmse(
@@ -330,7 +393,7 @@ def main() -> None:
 
     transfer = load_hugonnet_temporal_transfer()
     transfer_crossfit = load_hugonnet_crossfit()
-    glambie = pd.read_csv(PHYS_V2_GLAMBIE_COMPARISON).iloc[0]
+    glambie = pd.read_csv(PHYS_V2_GLAMBIE_ANNUAL_SERIES)
     offset_once = pd.read_csv(PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV).drop_duplicates("rgi_id")
 
     fig = plt.figure(figsize=(11.2, 7.4))
@@ -364,24 +427,24 @@ def main() -> None:
     ax.plot(malles["year"], malles["malles_mass_change_gt"], color=COLOR_MALLES, lw=1.4, label="Malles & Marzeion")
     ax.plot(recon["year"], recon["raw_mass_change_gt"], color=COLOR_RAW, lw=1.3, label="Raw reconstruction")
     ax.plot(recon["year"], recon["conservative_mass_change_gt"], color=COLOR_CONSERVATIVE, lw=1.5, label="Conservative calibration")
-    glambie_years = [int(glambie["start_year"]), int(glambie["end_year"])]
-    glambie_mean = float(glambie["glambie_mass_change_gt_yr"])
-    glambie_uncertainty = float(glambie["glambie_mass_change_uncertainty_gt_yr"])
+    glambie_years = glambie["year"]
+    glambie_mean = glambie["glambie_combined_gt"]
+    glambie_uncertainty = glambie["glambie_combined_gt_errors"]
     ax.fill_between(
         glambie_years,
-        [glambie_mean - glambie_uncertainty] * 2,
-        [glambie_mean + glambie_uncertainty] * 2,
+        glambie_mean - glambie_uncertainty,
+        glambie_mean + glambie_uncertainty,
         color=COLOR_GLAMBIE,
         alpha=0.12,
         zorder=1,
     )
     ax.plot(
         glambie_years,
-        [glambie_mean] * 2,
+        glambie_mean,
         color=COLOR_GLAMBIE,
         lw=1.2,
         ls=(0, (4, 2)),
-        label="GlaMBIE 2000-2023 period mean",
+        label="GlaMBIE annual estimate (reported uncertainty)",
         zorder=2,
     )
     ax.axhline(0, color="0.3", lw=0.7)
@@ -410,7 +473,10 @@ def main() -> None:
         color=COLOR_BAND,
         alpha=0.45,
     )
-    ax.plot(mm["year"], mm["malles_cumulative_gt"], color=COLOR_MALLES, lw=1.4, label="Malles & Marzeion")
+    ax.plot(mm["year"], mm["malles_cumulative_gt"], color=COLOR_MALLES, lw=1.4,
+            label=f"Malles: {complete_count} complete forcing trajectories")
+    ax.plot(mm["year"], mm["malles_available_mean_cumulative_gt"], color=COLOR_MALLES,
+            lw=1.0, ls="--", label="Malles: accumulated available-member annual mean")
     ax.plot(
         merged.loc[overlap, "year"],
         merged.loc[overlap, "raw_cumulative_overlap_gt"],
@@ -490,8 +556,8 @@ def main() -> None:
     fig.text(
         0.5,
         0.025,
-        "Mass-change comparison: fixed RGI v7 area in this study; evolving area in Malles & Marzeion; "
-        "GlaMBIE line denotes a period mean, not annual values.",
+        "Fixed RGI v7 area in this study; evolving area in external products. GlaMBIE shares WGMS/Hugonnet inputs.\n"
+        f"Malles shading: 5th-95th forcing percentiles; (a) available members, (b) {complete_count} complete trajectories. Neither is total uncertainty.",
         ha="center",
         va="bottom",
         fontsize=7.2,
@@ -509,6 +575,8 @@ def main() -> None:
     print(f"Saved figure -> {OUT_PNG}")
     print(f"Saved comparison data -> {OUT_CSV}")
     print(f"Saved comparison metrics -> {OUT_METRICS_CSV}")
+    plot_glambie_diagnostics(glambie)
+    print(f"Saved GlaMBIE diagnostics -> {OUT_GLAMBIE_PNG}")
     if not has_map_base:
         print(
             "Natural Earth land/coastline was not drawn. Check the local map files "

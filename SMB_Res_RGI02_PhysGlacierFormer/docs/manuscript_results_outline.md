@@ -9,11 +9,11 @@ Do not claim that GlacierFormer is the best model, that Hugonnet is independent 
 ## Main Results
 
 1. **Data correction and leakage control:** report official RGI6-to-RGI7 remapping, corrected ERA5-Land accumulation units, observation-aligned annual windows, and fold-local preprocessing.
-2. **Model selection:** use nested XGBoost as the unbiased selection result (LOGO R2=0.624, LOYO R2=0.574). Report the fixed regularized profile separately (LOGO R2=0.624, LOYO R2=0.581).
+2. **Model selection:** report nested XGBoost hyperparameter selection within its fixed feature/model family (LOGO R2=0.624, LOYO R2=0.574). Repeated outer-fold architecture screening remains a selection limitation. Report the fixed regularized profile separately (LOGO R2=0.624, LOYO R2=0.581).
 3. **Method contribution:** climate-anomaly decomposition improves R2 by about 0.19 under LOGO and 0.13 under LOYO relative to raw monthly climate.
 4. **Robustness:** report buffered LOGO/LOYO, rolling-origin, and LOSO together with glacier/year cluster-bootstrap intervals.
 5. **Reconstruction:** provide raw and conservative-calibrated products for 18,730 glaciers over 1951-2024, plus covariate-domain flags and validation-distribution prediction intervals.
-6. **External consistency:** separate Malles model intercomparison, Hugonnet temporal-transfer evidence, Zemp shared-WGMS comparison, and GlaMBIE period-mean comparison.
+6. **External consistency:** separate Malles model intercomparison, Hugonnet temporal-transfer evidence, Zemp shared-WGMS comparison, and GlaMBIE annual consistency. GlaMBIE 2000-2023 specific RMSE is 0.459/0.451 m w.e. yr-1 before/after calibration (r=0.913), but the standard-deviation ratio is only 0.633. Recent 2020-2023 RMSE worsens from 0.396 to 0.472. Show both raw and calibrated products and the altimetry-component sensitivity.
 
 ## Required Figures
 
@@ -33,7 +33,7 @@ Do not claim that GlacierFormer is the best model, that Hugonnet is independent 
 
 ## Submission Gates
 
-- Obtain annual GlaMBIE RGI02 data before claiming annual observational agreement for 2000-2023.
+- Investigate compressed regional annual variability and recent underestimation; GlaMBIE annual data are acquired and evaluated, with shared-source dependence disclosed.
 - Add observed snowline or albedo information before interpreting ERA5 snow albedo physically.
 - Explain weak performance in the most negative 10% of years and retain the extreme-tail diagnostic.
 - Label 2024 as provisional and all regional totals as fixed-RGI-v7 reference-geometry estimates.

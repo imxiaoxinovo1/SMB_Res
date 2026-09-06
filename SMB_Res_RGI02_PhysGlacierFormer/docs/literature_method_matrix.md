@@ -10,7 +10,7 @@
 | Zemp et al. (2019), *Nature* | Regional interpolation of glaciological and geodetic records | Used only as a consistency benchmark because it shares WGMS source information |
 | Malles and Marzeion (2021), *The Cryosphere* | Regional ensemble reconstruction under multiple climate forcings | Used as external model intercomparison, not observational validation |
 | Peng et al. (2025), *JGR Atmospheres* | Regional XGBoost reconstruction with ERA5-Land and terrain predictors | Supports the choice of XGBoost; their random spatial-temporal split is not adopted because LOGO/LOYO and buffered tests are stricter |
-| GlaMBIE Team (2025), *Nature* | Reconciled annual regional mass-change baseline from multiple observing methods | Table-1 RGI02 period mean is implemented as a shared-information consistency check; annual data remain to be acquired |
+| GlaMBIE Team (2025), *Nature* | Reconciled annual regional mass-change baseline from multiple observing methods | Official hydrological-year comparison implemented: r=0.913, calibrated RMSE=0.451 m w.e. yr-1; amplitude ratio=0.633 and recent positive residuals identify remaining weaknesses. Shared WGMS/Hugonnet inputs are disclosed; altimetry component checked separately |
 | Wang and Zhang (2026), *EGUsphere* preprint | MODIS summer albedo with a compact network under very small samples | Supports albedo as new information; architecture tricks alone are not adopted without an observed albedo input |
 
 ## Resulting Methodological Position

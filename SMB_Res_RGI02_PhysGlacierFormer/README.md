@@ -82,7 +82,10 @@ The corrected hydrological reconstruction begins in 1951 because ERA5-Land begin
 - Report out-of-fold metrics, never training-set metrics.
 - Treat Hugonnet residual reduction after fitting as calibration consistency, not independent validation.
 - Treat Malles & Marzeion as an external model comparison, not observations.
-- Treat the GlaMBIE Table-1 comparison as period-mean consistency with shared source information, not independent annual validation.
+- GlaMBIE Dataset 1.0.0 is read from `H:\Code\SMB\GlaMBIE_results\glambie_results_20240716\hydrological_years\2_western_canada_us.csv`. Obtain the unchanged archive from [WGMS](https://doi.org/10.5904/wgms-glambie-2024-07). Annual comparison uses October-September end-year labels; calendar-year files are rejected.
+- Treat GlaMBIE annual and Table-1 comparisons as external consistency with shared WGMS/Hugonnet information. The 2013-2022 altimetry-component check uses only years flagged as providing their own annual variability.
 - Describe the reconstruction as reference-geometry SMB unless evolving glacier geometry is explicitly modeled.
 - Do not claim seasonal skill from annual skill; winter and summer errors can cancel.
 - Treat SHAP contributions as descriptive model interpretation, not causal attribution.
+
+`analyze_xgboost_v2_reconstruction.py` saves separate GlaMBIE annual-series and metrics CSVs under `results/reconstruction/`. `05_figures/plot_reconstruction_external_comparison.py` produces the four-panel external comparison and `fig_glambie_annual_comparison.png`, without PDF duplicates. Malles cumulative shading is calculated from cumulative forcing-member trajectories, not cumulative annual quantiles.

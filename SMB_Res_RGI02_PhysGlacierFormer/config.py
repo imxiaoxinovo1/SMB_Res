@@ -108,6 +108,16 @@ PHYS_V2_ZEMP_COMPARISON = os.path.join(
 PHYS_V2_GLAMBIE_COMPARISON = os.path.join(
     RESULT_DIR, "reconstruction", "xgboost_v2_glambie_period_comparison.csv"
 )
+PHYS_V2_GLAMBIE_ANNUAL_SERIES = os.path.join(
+    RESULT_DIR, "reconstruction", "xgboost_v2_glambie_annual_series.csv"
+)
+PHYS_V2_GLAMBIE_ANNUAL_METRICS = os.path.join(
+    RESULT_DIR, "reconstruction", "xgboost_v2_glambie_annual_metrics.csv"
+)
+GLAMBIE_RGI02_CSV = (
+    r"H:\Code\SMB\GlaMBIE_results\glambie_results_20240716"
+    r"\hydrological_years\2_western_canada_us.csv"
+)
 PHYS_V2_INTERVAL_CALIBRATION = os.path.join(
     PHYS_V2_RESULT_DIR, "publication_evaluation", "prediction_interval_calibration.csv"
 )

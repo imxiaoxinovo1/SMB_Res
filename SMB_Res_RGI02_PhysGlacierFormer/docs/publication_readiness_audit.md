@@ -10,7 +10,7 @@ The legacy workflow was not publication-ready because WGMS-RGI matching, ERA5-La
 - **Time support:** records with credible dates use the 12 months ending at the reported observation month. Missing or invalid dates default to September. The corrected dataset contains 993 samples, 59 WGMS series, 58 unique RGI glaciers, and 70 years.
 - **ERA5-Land units:** `moda` hydrological accumulations are integrated from m d-1 to mm month-1; energy accumulations are converted from J m-2 d-1 to W m-2. The implementation follows [ECMWF ERA5-Land documentation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=505384848).
 - **Leakage control:** scaling and imputation are fitted inside each fold; LOGO groups by RGI v7 glacier, not WGMS series; early stopping uses grouped inner validation.
-- **Scientific invariants:** ten automated tests verify month completeness, plausible units, seasonal-label conservation, corrected South Cascade mapping, model output conservation, final-model feature-schema consistency, weighted Ridge fitting, seasonal monotonic-constraint encoding, bounded amplitude calibration, and the complete 18,730-glacier reconstruction grid.
+- **Scientific invariants:** sixteen automated tests cover month completeness, plausible units, seasonal-label conservation, corrected glacier mapping, model/schema consistency, reconstruction completeness, weighted fitting, constraints, amplitude calibration, GlaMBIE time support, cumulative ensemble trajectories, bootstrap indexing, identical paired targets, undefined constant-target R2, and two-stage prediction invariance to outer-test targets with missing spatial features.
 
 ## Current Results
 
@@ -26,7 +26,7 @@ The legacy workflow was not publication-ready because WGMS-RGI matching, ERA5-La
 | Nested-tuned XGBoost | 0.624 | 642 mm | 0.574 | 683 mm |
 | Compact PhysGlacierFormer, seasonal weight 2 | 0.562 | 692 mm | 0.533 | 715 mm |
 
-The anomaly decomposition is the defensible main gain: relative to corrected raw climate, it adds about 0.19 LOGO R2 and 0.13 LOYO R2. Random Forest is marginally better than the fixed XGBoost profile under LOGO but substantially worse under LOYO, so XGBoost is selected for balanced spatial-temporal robustness rather than universal dominance. Explicit physical indices provide only a small gain whose paired bootstrap interval overlaps zero for LOGO and LOYO; it should be an ablation, not the headline contribution. Nested XGBoost results are the unbiased hyperparameter-selection estimate; fixed-profile scores are sensitivity and selected-model results.
+The anomaly decomposition is the defensible main gain; use matched terrain/hypsometry settings for the one-factor ablation. Random Forest is marginally better than the fixed XGBoost profile under LOGO but substantially worse under LOYO, so XGBoost is selected for balanced spatial-temporal robustness rather than universal dominance. Explicit physical indices provide only a small gain whose paired bootstrap interval overlaps zero for LOGO and LOYO; it should be an ablation, not the headline contribution. Nested XGBoost evaluates hyperparameter selection within the specified model and feature family. It does not remove selection bias from repeatedly comparing architectures or feature families on the same outer folds.
 
 Robustness tests for the fixed regularized XGBoost yield 50 km buffered LOGO R2=0.596, +/-1-year buffered LOYO R2=0.572, four-observed-subregion LOSO R2=0.507, and rolling-origin forward-validation R2=0.553 for 1980-2023. These drops are moderate but show that ordinary LOGO can benefit from nearby glaciers and ordinary LOYO is temporal interpolation, not future forecasting.
 
@@ -55,7 +55,23 @@ Against the GlaMBIE 2000-2023 RGI02 period mean, raw/calibrated specific balance
 
 Cluster-excluded residual calibration gives empirical 90% coverage of 0.899 for both LOGO and LOYO. The corresponding global half-widths are 1.03 and 1.07 m w.e. yr-1. These are validation-distribution intervals and do not guarantee coverage for inventory glaciers outside the WGMS covariate domain.
 
+### Annual GlaMBIE Check (2026-09-06)
+
+The official WGMS GlaMBIE Dataset 1.0.0 is now available locally. The 24 northern hydrological periods 1999.75-2000.75 through 2022.75-2023.75 map to model end years 2000-2023. The reference average is -0.6781 m w.e. yr-1. Its combined series shares glaciological/geodetic sources; no model or calibration parameter was selected using these new comparisons. Source CSV SHA256: `4683C41B8480762D01D9BC8E1D0130CF907BC29E9A5B08EFAF209F1E1CB90EEE`.
+
+| Reference / years | Raw RMSE | Calibrated RMSE | Raw bias | Calibrated bias | r |
+|---|---:|---:|---:|---:|---:|
+| Combined, 2000-2023 | 0.459 | 0.451 | -0.082 | +0.003 | 0.913 |
+| Combined, 2020-2023 | 0.396 | 0.472 | +0.347 | +0.431 | 0.978 |
+| Altimetry component, 2013-2022 | 0.382 | 0.395 | +0.021 | +0.105 | 0.752 |
+
+Errors and biases above are in m w.e. yr-1. The four-year recent subset is descriptive and receives no five-year block-bootstrap CI. The altimetry rows have their own annual-variability flag set to one, but remain a processed GlaMBIE component rather than raw independent satellite measurements. Model annual standard deviation is only 63.3% of the combined reference over 2000-2023 and 58.3% of the altimetry component over 2013-2022. Constant offsets correct the mean but cannot correct this amplitude deficit. In 2023, GlaMBIE is -2.802 versus raw -2.448 and calibrated -2.364 m w.e. yr-1. Retain both products and investigate temporal variability and recent underestimation before claiming uniform improvement.
+
+The external figure now accumulates individual Malles forcing trajectories before taking 5th/95th percentiles. This band represents forcing ensemble spread, not total reconstruction uncertainty. Domain diagnostics now summarize each glacier across all 74 reconstructed years; the previous first-row summary only represented 1951. Cluster bootstrap uses positional indices and paired target consistency checks; paired differences report the observed point difference separately from the bootstrap mean. Two-stage spatial imputation was moved inside its inner glacier folds; the current 993 x 21 spatial matrix has zero missing values, so this prevents a future leakage path without changing the present experiment inputs. Spatial-stage targets remain glacier means over differing observation periods, not common-period climatologies.
+
 ## Literature Alignment
+
+Malles ensemble membership needs explicit interpretation: only forcing members 1, 9 and 10 fully span 1951-2018; all ten coexist only in 1981-2010. Accumulating the annual available-member mean gives -379.97 Gt over 1951-2018, while the mean of three complete cumulative trajectories gives -335.32 Gt. The updated figure shows both curves and shades only the complete-trajectory 5th-95th percentile range in the cumulative panel. This difference is an ensemble-support effect, not a change in this study's predictions. The official model uncertainty field is not represented by that forcing-spread band.
 
 - [Sjursen et al. (2025)](https://tc.copernicus.org/articles/19/5801/2025/) show that XGBoost is competitive for medium-sized glacier tabular data and stress non-random validation and reanalysis-to-glacier elevation differences.
 - [van der Meer et al. (2025)](https://tc.copernicus.org/articles/19/805/2025/) find that parsimonious temperature and precipitation predictors can outperform larger sets and document failures in extreme years.
@@ -66,7 +82,7 @@ Cluster-excluded residual calibration gives empirical 90% coverage of 0.899 for 
 
 ## Remaining Publication Gates
 
-1. Acquire the annual GlaMBIE regional series and compare year-by-year over 2000-2023. The currently implemented Table-1 period comparison verifies the mean only; Malles & Marzeion is a model intercomparison and Zemp shares WGMS information.
+1. Explain and test the regional amplitude deficit and 2020-2023 loss underestimation now identified by the annual GlaMBIE comparison. Preserve this external benchmark as evaluation evidence; any future tuning against it must be disclosed and evaluated elsewhere.
 2. Add MODIS albedo or Sentinel-2 snowline/snow-cover products before claiming physically resolved ablation. ERA5 snow albedo is not a substitute for glacier-surface albedo.
 3. Obtain pressure-level temperature and precipitation-gradient information before retrying elevation downscaling; the pressure-derived fixed lapse-rate ablation failed.
 4. State that fixed RGI v7 geometry yields reference-geometry SMB; it is not a coupled glacier-evolution or dynamic mass-change reconstruction.

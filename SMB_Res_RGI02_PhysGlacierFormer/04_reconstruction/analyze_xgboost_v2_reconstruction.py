@@ -16,7 +16,10 @@ PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_DIR)
 
 from config import (  # noqa: E402
+    GLAMBIE_RGI02_CSV,
     MALLES_REGION_NC,
+    PHYS_V2_GLAMBIE_ANNUAL_METRICS,
+    PHYS_V2_GLAMBIE_ANNUAL_SERIES,
     PHYS_V2_GLAMBIE_COMPARISON,
     PHYS_V2_MALLES_COMPARISON,
     PHYS_V2_RECONSTRUCTION_CALIBRATED_CSV,
@@ -92,7 +95,11 @@ def comparison_metrics(observed: np.ndarray, predicted: np.ndarray) -> dict[str,
     residual = predicted - observed
     return {
         "n_years": int(len(observed)),
-        "pearson_r": float(np.corrcoef(observed, predicted)[0, 1]),
+        "pearson_r": (
+            float(np.corrcoef(observed, predicted)[0, 1])
+            if len(observed) > 1 and np.std(observed) > 0 and np.std(predicted) > 0
+            else np.nan
+        ),
         "rmse_gt": float(np.sqrt(np.mean(residual**2))),
         "mae_gt": float(np.mean(np.abs(residual))),
         "bias_gt": float(np.mean(residual)),
@@ -135,7 +142,7 @@ def block_bootstrap_intervals(
             samples[metric].append(values[metric])
     intervals = {}
     for metric, values in samples.items():
-        low, high = np.quantile(values, [0.025, 0.975])
+        low, high = np.nanquantile(values, [0.025, 0.975])
         intervals[f"{metric}_ci_low"] = float(low)
         intervals[f"{metric}_ci_high"] = float(high)
     return intervals
@@ -148,7 +155,7 @@ def trend_per_decade(year: pd.Series, values: pd.Series, start_year: int = 1980)
 
 
 def glambie_period_comparison(regional: pd.DataFrame) -> pd.DataFrame:
-    """Compare period means only; annual GlaMBIE data are not bundled locally."""
+    """Retain the published Table-1 mean as a separate time-support comparison."""
     reference = GLAMBIE_RGI02
     period = regional[regional["year"].between(reference["start_year"], reference["end_year"])]
     if len(period) != reference["end_year"] - reference["start_year"] + 1:
@@ -182,6 +189,110 @@ def glambie_period_comparison(regional: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def glambie_region02(path: str = GLAMBIE_RGI02_CSV) -> pd.DataFrame:
+    """Read annual Oct-Sep totals, labeled by the September end year."""
+    frame = pd.read_csv(path).sort_values("start_dates").reset_index(drop=True)
+    required = {
+        "start_dates", "end_dates", "region", "glacier_area", "combined_gt",
+        "combined_gt_errors", "combined_mwe", "combined_mwe_errors",
+    }
+    if not required.issubset(frame):
+        raise ValueError(f"GlaMBIE columns missing: {sorted(required - set(frame))}")
+    if frame.empty or not frame["region"].eq("western_canada_us").all():
+        raise ValueError("Expected GlaMBIE western_canada_us regional data.")
+    start = frame["start_dates"].to_numpy(float)
+    end = frame["end_dates"].to_numpy(float)
+    numeric = frame[sorted(required - {"region"})].to_numpy(float)
+    if not np.isfinite(numeric).all():
+        raise ValueError("Nonfinite GlaMBIE combined data or dates.")
+    if not (
+        np.allclose(end - start, 1.0, rtol=0, atol=1e-7)
+        and np.allclose(start % 1, 0.75, rtol=0, atol=1e-7)
+        and np.allclose(end % 1, 0.75, rtol=0, atol=1e-7)
+    ):
+        raise ValueError("Expected annual Oct-Sep intervals, not calendar-year data.")
+    years = np.floor(end).astype(int)
+    if not np.all(np.diff(years) == 1):
+        raise ValueError("GlaMBIE intervals contain duplicate or missing years.")
+    if (frame["glacier_area"] <= 0).any() or (
+        frame[["combined_gt_errors", "combined_mwe_errors"]] < 0
+    ).any().any():
+        raise ValueError("Invalid GlaMBIE area or uncertainty.")
+    frame.insert(0, "year", years)
+    return frame.rename(columns={col: f"glambie_{col}" for col in frame if col != "year"})
+
+
+def glambie_annual_comparison(
+    regional: pd.DataFrame, n_bootstrap: int, block_years: int, seed: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    reference = glambie_region02()
+    merged = reference.merge(regional, on="year", how="left", validate="one_to_one")
+    model_columns = [
+        f"{label}_{quantity}" for label in ["raw", "calibrated"]
+        for quantity in ["area_weighted_smb_all_m", "mass_change_all_gt"]
+    ]
+    if not np.isfinite(merged[model_columns].to_numpy()).all():
+        raise ValueError("Reconstruction does not cover all GlaMBIE hydrological years.")
+    rows = []
+    for source, start, end in [
+        ("combined", 2000, 2023), ("combined", 2000, 2019), ("combined", 2020, 2023),
+        ("altimetry", 2013, 2022),
+    ]:
+        subset = merged[merged.year.between(start, end)]
+        if len(subset) != end - start + 1:
+            raise ValueError(f"Incomplete GlaMBIE evaluation interval {start}-{end}.")
+        if source == "altimetry" and not subset["glambie_altimetry_annual_variability"].eq(1).all():
+            raise ValueError("Altimetry comparison requires its own annual variability.")
+        for label in ["raw", "calibrated"]:
+            for unit, reference_col, model_col in [
+                ("m w.e. yr-1", f"glambie_{source}_mwe", f"{label}_area_weighted_smb_all_m"),
+                ("Gt yr-1", f"glambie_{source}_gt", f"{label}_mass_change_all_gt"),
+            ]:
+                observed = subset[reference_col].to_numpy()
+                predicted = subset[model_col].to_numpy()
+                if not np.isfinite(observed).all():
+                    raise ValueError(f"Incomplete GlaMBIE {source} values.")
+                metrics = comparison_metrics(observed, predicted)
+                # Same resampling indices for each raw/calibrated comparison.
+                ci = block_bootstrap_intervals(
+                    observed, predicted, n_bootstrap, block_years, np.random.default_rng(seed)
+                )
+                row = {
+                    "model": label, "reference": source,
+                    "start_year": start, "end_year": end, "unit": unit,
+                    "n_years": len(subset), "pearson_r": metrics["pearson_r"],
+                    "rmse": metrics["rmse_gt"], "mae": metrics["mae_gt"],
+                    "bias": metrics["bias_gt"], "model_mean": float(predicted.mean()),
+                    "glambie_mean": float(observed.mean()),
+                    "std_ratio_model_to_reference": float(np.std(predicted) / np.std(observed)),
+                    "model_on_reference_slope": float(linregress(observed, predicted).slope),
+                    "bootstrap": f"{n_bootstrap} moving-block resamples; block={block_years} years",
+                    "time_support": "October-September; September end-year label",
+                    "source": "doi:10.5904/wgms-glambie-2024-07; Dataset 1.0.0",
+                    "interpretation": "external consistency; shared WGMS/Hugonnet sources; fixed versus evolving area",
+                }
+                for key, value in ci.items():
+                    row[key.replace("rmse_gt", "rmse").replace("bias_gt", "bias")] = value
+                rows.append(row)
+    return merged, pd.DataFrame(rows)
+
+
+def cumulative_ensemble_summary(values: np.ndarray) -> dict[str, np.ndarray]:
+    """Accumulate each complete forcing trajectory before computing quantiles."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 2 or values.shape[1] == 0:
+        raise ValueError("Expected nonempty forcing-by-year array.")
+    complete = np.isfinite(values).all(axis=1)
+    if not complete.any():
+        raise ValueError("No complete ensemble trajectories over the cumulative interval.")
+    cumulative = np.cumsum(values[complete], axis=1)
+    return {
+        "malles_cumulative_gt": cumulative.mean(axis=0),
+        "malles_p05_cumulative_gt": np.percentile(cumulative, 5, axis=0),
+        "malles_p95_cumulative_gt": np.percentile(cumulative, 95, axis=0),
+    }
 
 
 def main() -> None:
@@ -264,7 +375,13 @@ def main() -> None:
             ]
         )
 
-    glacier_once = reconstruction.drop_duplicates("rgi_id").copy()
+    # Dynamic covariates vary by year: the first row is not a glacier-wide OOD summary.
+    glacier_once = reconstruction.groupby("rgi_id", sort=False).agg(
+        area_km2=("area_km2", "first"),
+        area_outside_training_range=("area_outside_training_range", "first"),
+        feature_outside_training_fraction=("feature_outside_training_fraction", "mean"),
+        max_feature_outside_fraction=("feature_outside_training_fraction", "max"),
+    ).reset_index()
     glacier_once["feature_ood_class"] = pd.cut(
         glacier_once["feature_outside_training_fraction"],
         bins=[-np.inf, 0.0, 0.05, 0.10, np.inf],
@@ -277,10 +394,12 @@ def main() -> None:
             total_area_km2=("area_km2", "sum"),
             median_area_km2=("area_km2", "median"),
             median_feature_outside_fraction=("feature_outside_training_fraction", "median"),
+            median_max_feature_outside_fraction=("max_feature_outside_fraction", "median"),
             glaciers_outside_training_area=("area_outside_training_range", "sum"),
         )
         .reset_index()
     )
+    ood["classification_basis"] = "glacier mean feature-outside fraction across all reconstructed years"
 
     malles = malles_region02()
     comparison = regional.merge(malles, on="year", how="inner")
@@ -364,6 +483,9 @@ def main() -> None:
         )
 
     glambie_comparison = glambie_period_comparison(regional)
+    glambie_annual, glambie_metrics = glambie_annual_comparison(
+        regional, args.bootstrap, args.block_years, args.seed
+    )
 
     os.makedirs(os.path.dirname(PHYS_V2_RECONSTRUCTION_QC_SUMMARY), exist_ok=True)
     pd.DataFrame(qc_rows).to_csv(PHYS_V2_RECONSTRUCTION_QC_SUMMARY, index=False)
@@ -378,6 +500,8 @@ def main() -> None:
         stream.write("\n# annual_series\n")
         zemp_comparison.to_csv(stream, index=False)
     glambie_comparison.to_csv(PHYS_V2_GLAMBIE_COMPARISON, index=False)
+    glambie_annual.to_csv(PHYS_V2_GLAMBIE_ANNUAL_SERIES, index=False)
+    glambie_metrics.to_csv(PHYS_V2_GLAMBIE_ANNUAL_METRICS, index=False)
 
     print(pd.DataFrame(qc_rows).to_string(index=False))
     print("\nMalles & Marzeion comparison (full RGI02 only):")
@@ -386,6 +510,11 @@ def main() -> None:
     print(pd.DataFrame(zemp_metric_rows).to_string(index=False))
     print("\nGlaMBIE period-mean consistency (shared source information; not independent):")
     print(glambie_comparison.to_string(index=False))
+    print("\nGlaMBIE hydrological-year consistency (shared sources; not independent):")
+    print(glambie_metrics[[
+        "model", "reference", "start_year", "end_year", "unit", "pearson_r", "rmse", "bias",
+        "std_ratio_model_to_reference",
+    ]].to_string(index=False))
     print(f"Saved QC -> {PHYS_V2_RECONSTRUCTION_QC_SUMMARY}")
     print(f"Saved OOD summary -> {PHYS_V2_RECONSTRUCTION_OOD_SUMMARY}")
     print(f"Saved regional series -> {PHYS_V2_RECONSTRUCTION_REGIONAL_CSV}")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -13,6 +14,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 sys.path.insert(0, os.path.join(PROJECT_DIR, "02_models"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "03_training"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "04_reconstruction"))
 
 from config import (  # noqa: E402
     PHYS_GLACIERFORMER_V2_PARAMS,
@@ -29,6 +31,101 @@ from train_tree_v2_cv import (  # noqa: E402
     monthly_physical_monotonic_constraints,
 )
 from calibrate_xgboost_v2_amplitude import fit_amplitude_calibrator  # noqa: E402
+from analyze_xgboost_v2_reconstruction import (  # noqa: E402
+    cumulative_ensemble_summary,
+    glambie_region02,
+)
+from evaluate_phys_v2_results import (  # noqa: E402
+    bootstrap_intervals,
+    paired_bootstrap_difference,
+    regression_metrics,
+)
+from train_twostage_xgboost_v2 import cross_fitted_spatial_mean  # noqa: E402
+
+
+class ExternalComparisonTests(unittest.TestCase):
+    def test_two_stage_spatial_fit_handles_missing_data_without_test_targets(self) -> None:
+        spatial = np.repeat(np.array([[0, 1], [2, np.nan], [3, 4], [5, np.nan]]), 2, axis=0)
+        target = np.linspace(-2, 1, 8)
+        ids = np.repeat(["A", "B", "C", "D"], 2)
+        train = ids != "D"
+        first = cross_fitted_spatial_mean(spatial, target, ids, train, ~train, "ridge", 2, 42)
+        changed = target.copy()
+        changed[~train] = 1000
+        second = cross_fitted_spatial_mean(spatial, changed, ids, train, ~train, "ridge", 2, 42)
+        self.assertTrue(np.isfinite(first[0][train]).all())
+        self.assertTrue(np.isfinite(first[1]).all())
+        np.testing.assert_array_equal(first[0][train], second[0][train])
+        np.testing.assert_array_equal(first[1], second[1])
+
+    def test_cluster_bootstrap_uses_positions_not_dataframe_labels(self) -> None:
+        frame = pd.DataFrame({
+            "rgi_id": ["A", "A", "B", "B"],
+            "obs_annual": [-2, -1, 0, 1], "pred_annual": [-1.5, -0.8, 0.1, 0.6],
+        })
+        relabeled = frame.set_axis([80, 12, 17, 90])
+        first = bootstrap_intervals(frame, "rgi_id", 30, np.random.default_rng(42))
+        second = bootstrap_intervals(relabeled, "rgi_id", 30, np.random.default_rng(42))
+        self.assertEqual(first, second)
+
+    def test_paired_metrics_reject_target_mismatch_and_keep_point_estimate(self) -> None:
+        reference = pd.DataFrame({
+            "rgi_id": ["A", "A", "B", "B"], "year": [2000, 2001, 2000, 2001],
+            "obs_annual": [-2, -1, 0, 1], "pred_annual": [-1.5, -0.8, 0.1, 0.6],
+        })
+        candidate = reference.copy()
+        candidate["pred_annual"] = candidate["obs_annual"]
+        values = paired_bootstrap_difference(candidate, reference, "rgi_id", 30, np.random.default_rng(42))
+        expected = -np.sqrt(np.mean((reference.pred_annual - reference.obs_annual)**2)) * 1000
+        self.assertAlmostEqual(values["rmse_delta_mm"], expected)
+        candidate["obs_annual"] = candidate["obs_annual"].astype(float)
+        candidate.loc[0, "obs_annual"] += 0.01
+        with self.assertRaisesRegex(ValueError, "identical observation"):
+            paired_bootstrap_difference(candidate, reference, "rgi_id", 30, np.random.default_rng(42))
+
+    def test_constant_observations_have_undefined_r2_but_valid_rmse(self) -> None:
+        values = regression_metrics(np.ones(4), np.zeros(4))
+        self.assertTrue(np.isnan(values["r2"]))
+        self.assertTrue(np.isnan(values["pearson_r"]))
+        self.assertEqual(values["rmse_mm"], 1000.0)
+
+    def test_glambie_end_year_and_rejection_of_wrong_time_support(self) -> None:
+        frame = pd.DataFrame({
+            "start_dates": [1999.75, 2000.75], "end_dates": [2000.75, 2001.75],
+            "region": ["western_canada_us"] * 2, "glacier_area": [14000, 13900],
+            "combined_gt": [-10, -12], "combined_gt_errors": [1, 1],
+            "combined_mwe": [-0.7, -0.8], "combined_mwe_errors": [0.1, 0.1],
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "reference.csv")
+            frame.to_csv(path, index=False)
+            self.assertEqual(glambie_region02(path).year.tolist(), [2000, 2001])
+            calendar = frame.copy()
+            calendar[["start_dates", "end_dates"]] -= 0.75
+            calendar.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "Oct-Sep"):
+                glambie_region02(path)
+            duplicate = pd.concat([frame, frame.iloc[[0]]])
+            duplicate.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "duplicate or missing"):
+                glambie_region02(path)
+            gapped = frame.copy()
+            gapped.loc[1, ["start_dates", "end_dates"]] += 1
+            gapped.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "duplicate or missing"):
+                glambie_region02(path)
+
+    def test_cumulative_band_preserves_member_trajectories(self) -> None:
+        # Crossing trajectories cancel at year two; annual quantiles do not.
+        values = np.array([[-10.0, 10.0], [10.0, -10.0]])
+        result = cumulative_ensemble_summary(values)
+        self.assertEqual(result["malles_p05_cumulative_gt"][-1], 0.0)
+        self.assertEqual(result["malles_p95_cumulative_gt"][-1], 0.0)
+        self.assertEqual(result["malles_cumulative_gt"][-1], 0.0)
+        incomplete = np.vstack([values, [np.nan, 100]])
+        np.testing.assert_array_equal(
+            cumulative_ensemble_summary(incomplete)["malles_cumulative_gt"], [0, 0]
+        )
 
 
 class PhysV2PipelineTests(unittest.TestCase):

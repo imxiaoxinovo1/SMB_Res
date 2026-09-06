@@ -142,9 +142,12 @@ def cross_fitted_spatial_mean(
     oof_by_glacier: dict[object, float] = {}
     splitter = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
     for inner_index, (fit_index, val_index) in enumerate(splitter.split(glacier_x)):
+        inner_train = np.zeros(len(glacier_x), dtype=bool)
+        inner_train[fit_index] = True
+        inner_x, _ = impute_from_train(glacier_x, inner_train)
         model = make_model(model_name, seed + inner_index)
-        model.fit(glacier_x[fit_index], glacier_y[fit_index])
-        for rgi_id, prediction in zip(train_ids[val_index], model.predict(glacier_x[val_index])):
+        model.fit(inner_x[fit_index], glacier_y[fit_index])
+        for rgi_id, prediction in zip(train_ids[val_index], model.predict(inner_x[val_index])):
             oof_by_glacier[rgi_id] = float(prediction)
 
     train_prediction = np.full(len(target), np.nan, dtype=np.float32)
@@ -154,8 +157,10 @@ def cross_fitted_spatial_mean(
         raise RuntimeError("Incomplete cross-fitted spatial predictions.")
 
     full_model = make_model(model_name, seed + 10_000)
-    full_model.fit(glacier_x, glacier_y)
-    test_prediction = full_model.predict(spatial[test_mask]).astype(np.float32)
+    full_x, medians = impute_from_train(glacier_x, np.ones(len(glacier_x), dtype=bool))
+    full_model.fit(full_x, glacier_y)
+    test_x = np.where(np.isnan(spatial[test_mask]), medians, spatial[test_mask])
+    test_prediction = full_model.predict(test_x).astype(np.float32)
     return train_prediction, test_prediction
 
 
@@ -213,10 +218,9 @@ def main() -> None:
         if args.cv == "forward" and int(train.sum()) < args.forward_min_train_samples:
             print(f"Skipping {held_out}: only {int(train.sum())} prior samples")
             continue
-        imputed_spatial, _ = impute_from_train(spatial, train)
         imputed_dynamic, _ = impute_from_train(dynamic, train)
         train_spatial, test_spatial = cross_fitted_spatial_mean(
-            imputed_spatial,
+            spatial,
             target,
             rgi_ids,
             train,

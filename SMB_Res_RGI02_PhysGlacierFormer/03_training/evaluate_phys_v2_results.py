@@ -38,7 +38,10 @@ def regression_metrics(obs: np.ndarray, pred: np.ndarray) -> dict[str, float]:
         np.sqrt(sum_squared_observed * np.sum(pred_centered**2))
     )
     return {
-        "r2": float(1.0 - np.sum(residual**2) / sum_squared_observed),
+        "r2": (
+            float(1.0 - np.sum(residual**2) / sum_squared_observed)
+            if sum_squared_observed > 0 else np.nan
+        ),
         "pearson_r": float(
             np.sum(obs_centered * pred_centered) / correlation_denominator
         ) if correlation_denominator > 0 else np.nan,
@@ -87,10 +90,7 @@ def bootstrap_intervals(
     groups = frame[group_column].dropna().unique()
     if len(groups) < 2:
         return {}
-    group_indices = {
-        group: indices.to_numpy()
-        for group, indices in frame.groupby(group_column, sort=False).groups.items()
-    }
+    group_indices = frame.groupby(group_column, sort=False).indices
     observed = frame["obs_annual"].to_numpy()
     predicted = frame["pred_annual"].to_numpy()
     values: dict[str, list[float]] = {
@@ -126,7 +126,7 @@ def residual_rows(model: str, cv: str, frame: pd.DataFrame) -> list[dict[str, fl
     for category, mask in categories.items():
         values = regression_metrics(obs[mask], pred[mask])
         rows.append({"model": model, "cv": cv, "subset": category, "n": int(mask.sum()), **values})
-    if len(frame) >= 3:
+    if len(frame) >= 3 and np.std(obs) > 0:
         fit = linregress(obs, pred)
         rows[0]["prediction_vs_observation_slope"] = float(fit.slope)
         rows[0]["prediction_vs_observation_intercept_m"] = float(fit.intercept)
@@ -141,13 +141,18 @@ def paired_bootstrap_difference(
     rng: np.random.Generator,
 ) -> dict[str, float]:
     keys = [column for column in ["glacier_id", "rgi_id", "year"] if column in candidate.columns]
-    right = reference[keys + ["pred_annual"]].rename(columns={"pred_annual": "pred_reference"})
+    right = reference[keys + ["pred_annual", "obs_annual"]].rename(
+        columns={"pred_annual": "pred_reference", "obs_annual": "obs_reference"}
+    )
     paired = candidate.merge(right, on=keys, how="inner", validate="one_to_one")
+    if len(paired) != len(candidate) or len(paired) != len(reference):
+        return {"n_common": len(paired)}
+    if not np.allclose(paired["obs_annual"], paired["obs_reference"], rtol=0, atol=1e-7):
+        raise ValueError("Paired comparisons require identical observation targets.")
     groups = paired[group_column].dropna().unique()
-    group_indices = {
-        group: indices.to_numpy()
-        for group, indices in paired.groupby(group_column, sort=False).groups.items()
-    }
+    if len(groups) < 2 or paired[group_column].isna().any():
+        raise ValueError("Paired bootstrap requires at least two complete clusters.")
+    group_indices = paired.groupby(group_column, sort=False).indices
     observed = paired["obs_annual"].to_numpy()
     candidate_prediction = paired["pred_annual"].to_numpy()
     reference_prediction = paired["pred_reference"].to_numpy()
@@ -161,13 +166,17 @@ def paired_bootstrap_difference(
         rmse_delta.append(candidate_metrics["rmse_mm"] - reference_metrics["rmse_mm"])
         r2_delta.append(candidate_metrics["r2"] - reference_metrics["r2"])
     rmse_ci = np.quantile(rmse_delta, [0.025, 0.975])
-    r2_ci = np.quantile(r2_delta, [0.025, 0.975])
+    finite_r2 = np.asarray(r2_delta)[np.isfinite(r2_delta)]
+    r2_ci = np.quantile(finite_r2, [0.025, 0.975]) if len(finite_r2) else [np.nan, np.nan]
+    candidate_metrics = regression_metrics(observed, candidate_prediction)
+    reference_metrics = regression_metrics(observed, reference_prediction)
     return {
         "n_common": len(paired),
-        "rmse_delta_mm": float(np.mean(rmse_delta)),
+        "rmse_delta_mm": candidate_metrics["rmse_mm"] - reference_metrics["rmse_mm"],
+        "rmse_delta_bootstrap_mean_mm": float(np.mean(rmse_delta)),
         "rmse_delta_ci_low": float(rmse_ci[0]),
         "rmse_delta_ci_high": float(rmse_ci[1]),
-        "r2_delta": float(np.mean(r2_delta)),
+        "r2_delta": candidate_metrics["r2"] - reference_metrics["r2"],
         "r2_delta_ci_low": float(r2_ci[0]),
         "r2_delta_ci_high": float(r2_ci[1]),
     }

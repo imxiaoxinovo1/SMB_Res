@@ -26,7 +26,7 @@ Nested linear amplitude calibration is also rejected: it nearly removes LOYO mea
 
 ## Reconstruction Evaluation
 
-Publish raw and conservatively Hugonnet-calibrated products. Treat Hugonnet transfer as sensitivity evidence, Malles & Marzeion as external model intercomparison, and Zemp et al. and GlaMBIE as shared-information consistency checks. The bundled GlaMBIE benchmark covers the 2000-2023 period mean only; annual data must be acquired before reporting annual skill. Report out-of-domain inventory coverage and fixed-reference-geometry limitations.
+Publish raw and conservatively Hugonnet-calibrated products. Treat Hugonnet transfer as sensitivity evidence, Malles & Marzeion as external model intercomparison, and Zemp et al. and GlaMBIE as shared-information consistency checks. Official GlaMBIE annual hydrological data now cover 2000-2023; the 2013-2022 altimetry component is also compared where it provides its own annual variability. Assess the amplitude deficit and recent loss underestimation without tuning to this benchmark. Report out-of-domain inventory coverage across all reconstruction years and fixed-reference-geometry limitations.
 
 ## Remaining Data Experiment
 
