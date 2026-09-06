@@ -92,6 +92,44 @@ Malles ensemble membership needs explicit interpretation: only forcing members 1
 - [Hugonnet et al. (2021)](https://www.nature.com/articles/s41586-021-03436-z) provide remote-sensing geodetic mass-change constraints, not annual in-situ SMB observations.
 - [The GlaMBIE Team (2025)](https://www.nature.com/articles/s41586-024-08545-z) provide a reconciled annual regional observational baseline for 2000-2023. RGI02 has a reported period mean of -0.68 +/- 0.06 m w.e. yr-1, but the product is not statistically independent of all inputs used here.
 
+## Sentinel-2 Surface Feasibility Pilot (2026-09-06)
+
+`01_preprocessing/step14_probe_sentinel2_surface.py` now reads only small COG windows
+around three corrected RGI polygons, with no full satellite tiles saved. The
+2023-August pilot retrieves two low-tile-cloud scenes per glacier. Collection 1
+results pass the predefined 70% usable-pixel / 95% reference-outline coverage QC:
+South Cascade 88.0% and 96.2%, Peyto 83.3% and 82.7%, Conrad 86.8% and 86.9%.
+The Conrad scenes are adjacent tiles of the same date, not two independent dates.
+QC tables and complete relevant STAC properties/assets are retained under
+`data/remote_sensing/`; one PNG is saved under `figures/`. The invariant test suite
+now has 20 passing tests, including scaling, nodata and SCL masking.
+
+The initial legacy `sentinel-2-l2a` pilot was rejected: its STAC metadata advertised
+scale 0.0001 and offset -0.1 even when the COG had already had the offset removed.
+A matched B11 window (column 1430, row 3690, size 20 x 20) for Peyto's 2023-08-27
+scene had legacy DN median 2552.5 versus Collection 1 median 3552.5. The latter's
+embedded TIFF scale/offset match STAC; the former's do not. Applying the legacy
+STAC offset twice caused false negative reflectances and low coverage. The pilot
+now accepts only `sentinel-2-c1-l2a` and rejects COG/STAC scaling disagreements.
+It does not guess offsets from pixel brightness or relax QC to obtain more data.
+
+This establishes technical access and radiometric consistency, not predictive
+improvement. NDSI is a snow/ice spectral diagnostic, not broadband albedo, a
+validated snow fraction or ELA. SCL class 11 includes snow and ice and is not an
+independent NDSI reference. Fixed RGI outlines can include terrain deglaciated
+before 2023; clouds/shadows and different scene dates prevent direct comparison
+of the displayed glaciers as if they were contemporaneous glacier-wide means.
+
+Before proposing a satellite model input, first build matched melt-season
+time series with unique acquisition dates, local cloud/coverage QC and adequate
+multi-year coverage. Check the relation to ERA5 snow albedo and held-out SMB
+residuals. Any short-era feature experiment must use identical rows in its
+climate-only control and grouped validation; do not tune on external GlaMBIE.
+Sentinel-2 is unavailable for most of 1951-2024, so it cannot simply be inserted
+into the long-hindcast predictor. A modern-era diagnostic paper section is
+defensible without claiming satellite-enhanced historical accuracy. Existing
+main-model weights, predictions and calibration remain unchanged by this pilot.
+
 ## Remaining Publication Gates
 
 1. Explain and test the regional amplitude deficit and 2020-2023 loss underestimation now identified by the annual GlaMBIE comparison. Preserve this external benchmark as evaluation evidence; any future tuning against it must be disclosed and evaluated elsewhere.

@@ -24,3 +24,21 @@ The publishable contribution is not a claim that a Transformer outperforms estab
 3. Orographic precipitation gradients or independent snow-accumulation constraints.
 
 These additions address identified structural errors. Further attention modules or deeper encoders are not justified by the present sample size or validation results.
+
+## Satellite Product Implementation Checks
+
+- [ESA SentiWiki processing](https://sentiwiki.copernicus.eu/web/s2-processing):
+  SCL distinguishes invalid, cloud, shadow, water and snow/ice classes. Class 11
+  is not a snow-only ground truth. NDSI must not be labeled broadband albedo.
+- [Earth Search source documentation](https://github.com/Element84/earth-search):
+  Collection 1 COGs expose reflectance scale and offset. Historical collection
+  coverage must be checked rather than assuming complete scenes for every year.
+- [Legacy offset issue 66](https://github.com/Element84/earth-search/issues/66):
+  users report inconsistent legacy offset metadata. Our matched-window check
+  independently found a 1000-DN difference between old and Collection 1 B11 for
+  the same August 2023 Peyto scene. Collection 1 plus embedded-metadata checks
+  replaces legacy extraction in the pilot. The issue report alone is not proof
+  that every legacy scene is affected.
+
+The three-glacier pilot establishes usable access only. No satellite variable
+has yet been added to training or to the historical reconstruction.

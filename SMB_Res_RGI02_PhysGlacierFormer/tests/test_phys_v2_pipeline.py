@@ -15,6 +15,7 @@ sys.path.insert(0, PROJECT_DIR)
 sys.path.insert(0, os.path.join(PROJECT_DIR, "02_models"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "03_training"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "04_reconstruction"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "01_preprocessing"))
 
 from config import (  # noqa: E402
     PHYS_GLACIERFORMER_V2_PARAMS,
@@ -42,9 +43,37 @@ from evaluate_phys_v2_results import (  # noqa: E402
     regression_metrics,
 )
 from train_twostage_xgboost_v2 import cross_fitted_spatial_mean  # noqa: E402
+from step14_probe_sentinel2_surface import (  # noqa: E402
+    check_radiometry, ndsi_with_quality, scaled_reflectance,
+)
 
 
 class ExternalComparisonTests(unittest.TestCase):
+    def test_sentinel_rejects_ambiguous_legacy_cog_scaling(self) -> None:
+        asset = {"raster:bands": [{"nodata": 0, "scale": 0.0001, "offset": -0.1}]}
+        check_radiometry(asset, 0.0001, -0.1, 0)
+        with self.assertRaises(ValueError):
+            check_radiometry(asset, 1.0, 0.0, 0)
+        with self.assertRaises(ValueError):
+            check_radiometry(asset, 0.0001, -0.1, 65535)
+
+    def test_sentinel_scaling_excludes_nodata_before_applying_offset(self) -> None:
+        asset = {"raster:bands": [{"nodata": 0, "scale": 0.0001, "offset": -0.1}]}
+        values = scaled_reflectance(np.array([0, 1500, 2000]), asset)
+        self.assertTrue(np.isnan(values[0]))
+        np.testing.assert_allclose(values[1:], [0.05, 0.1])
+
+    def test_ndsi_masks_cloud_shadow_water_and_pixels_outside_outline(self) -> None:
+        green = np.full((2, 3), 0.5)
+        swir = np.full((2, 3), 0.1)
+        scl = np.array([[11, 9, 3], [6, 5, 11]])
+        inside = np.ones((2, 3), dtype=bool)
+        inside[1, 2] = False
+        ndsi, valid = ndsi_with_quality(green, swir, scl, inside)
+        np.testing.assert_array_equal(valid, [[True, False, False], [False, True, False]])
+        np.testing.assert_allclose(ndsi[valid], 2 / 3)
+        self.assertTrue(np.isnan(ndsi[~valid]).all())
+
     def test_year_coherence_gradient_and_hessian_bound(self) -> None:
         groups = np.array([200009, 200009, 200009, 200010])
         observed = np.array([-2., -1., 0., 1.])
