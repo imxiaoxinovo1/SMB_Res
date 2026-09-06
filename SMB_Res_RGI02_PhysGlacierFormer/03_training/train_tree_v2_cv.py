@@ -257,6 +257,27 @@ def fit_model(
     return model.fit(x_train, y_train, sample_weight=sample_weight)
 
 
+def year_coherence_objective(year_month_groups: np.ndarray, weight: float):
+    """Add n_g * mean(residual_g)^2 / 2 for training groups with >=3 samples."""
+    if not np.isfinite(weight) or weight < 0:
+        raise ValueError("Year-coherence weight must be finite and nonnegative.")
+    _, inverse, counts = np.unique(year_month_groups, return_inverse=True, return_counts=True)
+    eligible = counts[inverse] >= 3
+
+    def objective(observed: np.ndarray, predicted: np.ndarray):
+        if len(observed) != len(inverse) or len(predicted) != len(inverse):
+            raise ValueError("Year-coherence groups must match training rows.")
+        residual = predicted - observed
+        group_mean = np.bincount(inverse, weights=residual, minlength=len(counts)) / counts
+        gradient = residual + weight * group_mean[inverse] * eligible
+        # Exact within-group curvature is dense; this diagonal majorant bounds
+        # it above for XGBoost's separable second-order updates.
+        hessian = np.ones(len(residual), dtype=float) + weight * eligible
+        return gradient, hessian
+
+    return objective
+
+
 def build_sample_weights(
     glacier_groups: np.ndarray,
     uncertainty: np.ndarray,
@@ -330,6 +351,8 @@ def parse_args() -> argparse.Namespace:
         help="Fold-local training weights; held-out labels are never used.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--year-coherence-weight", type=float, default=0.0,
+                        help="Extra training-year/end-month mean-residual penalty; XGBoost only.")
     parser.add_argument("--forward-start-year", type=int, default=1980)
     parser.add_argument("--forward-min-train-samples", type=int, default=100)
     parser.add_argument("--spatial-buffer-km", type=float, default=50.0)
@@ -343,6 +366,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if not np.isfinite(args.year_coherence_weight) or args.year_coherence_weight < 0:
+        raise ValueError("Year-coherence weight must be finite and nonnegative.")
+    if args.year_coherence_weight and (args.model != "xgboost" or args.sample_weight != "none"):
+        raise ValueError("Year coherence currently supports unweighted XGBoost only.")
     data = np.load(PHYS_V2_SEQUENCES_NPZ, allow_pickle=True)
     stored = [str(name) for name in data["dynamic_features"]]
     selected = FEATURE_SETS[args.feature_set]
@@ -425,6 +452,13 @@ def main() -> None:
         x_train = np.where(np.isnan(x[train]), medians, x[train])
         x_test = np.where(np.isnan(x[test]), medians, x[test])
         model = make_model(args.model, args.seed + fold_index, args.xgb_profile)
+        if args.year_coherence_weight:
+            model.set_params(
+                objective=year_coherence_objective(
+                    years[train] * 100 + data["end_months"][train], args.year_coherence_weight
+                ),
+                base_score=float(np.mean(y[train])),
+            )
         if args.monotonic_physics:
             if args.model != "xgboost" or args.representation not in {"monthly", "monthly_phys"}:
                 raise ValueError("Physical monotonic constraints require monthly XGBoost.")
@@ -457,9 +491,10 @@ def main() -> None:
     seed_tag = "" if args.seed == 42 else f"_seed{args.seed}"
     profile_tag = "" if args.model != "xgboost" or args.xgb_profile == "reference" else f"_p-{args.xgb_profile}"
     monotonic_tag = "_mono-physics" if args.monotonic_physics else ""
+    coherence_tag = f"_yc{args.year_coherence_weight:g}" if args.year_coherence_weight else ""
     tag = (
         f"{args.model}_v2_{args.feature_set}_{args.representation}_"
-        f"{args.static_set}_{hyp_tag}{weight_tag}{profile_tag}{monotonic_tag}{seed_tag}"
+        f"{args.static_set}_{hyp_tag}{weight_tag}{profile_tag}{monotonic_tag}{coherence_tag}{seed_tag}"
     )
     result_dir = os.path.join(PHYS_V2_RESULT_DIR, tag)
     os.makedirs(result_dir, exist_ok=True)

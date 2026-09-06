@@ -30,4 +30,16 @@ Publish raw and conservatively Hugonnet-calibrated products. Treat Hugonnet tran
 
 ## Remaining Data Experiment
 
+Before acquiring new predictors, test one predeclared training-loss sensitivity: regularized XGBoost with `--year-coherence-weight 0.5`. Add half the sample-count-weighted squared mean residual within training year/end-month groups containing at least three glaciers. This addresses coherent temporal errors without using GlaMBIE targets. Run LOYO and LOGO; continue to forward validation only if temporal gains do not trade against substantial spatial degradation. Evaluate paired uncertainty and within-glacier amplitude, not regional curve matching. This is exploratory model development, not an untouched outer-CV confirmation experiment.
+
+Outcome: rejected. LOGO RMSE=642.5 mm versus 641.3 mm; LOYO RMSE=685.0 mm versus 677.0 mm. LOYO most-negative-decile RMSE also worsens from 1154.7 to 1181.1 mm. The fixed 0.5 weight fails the temporal-improvement criterion, so forward validation and further weight searches are not pursued.
+
+Reproduce from the project directory:
+
+```powershell
+python 03_training/train_tree_v2_cv.py --cv loyo --model xgboost --xgb-profile regularized --year-coherence-weight 0.5
+python 03_training/train_tree_v2_cv.py --cv logo --model xgboost --xgb-profile regularized --year-coherence-weight 0.5
+python 03_training/evaluate_phys_v2_results.py
+```
+
 The next justified model-input experiment is observed glacier-surface information from MODIS albedo or Sentinel-2 snowline/snow cover. Additional attention modules are not justified without new information.

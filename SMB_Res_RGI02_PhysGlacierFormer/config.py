@@ -114,6 +114,12 @@ PHYS_V2_GLAMBIE_ANNUAL_SERIES = os.path.join(
 PHYS_V2_GLAMBIE_ANNUAL_METRICS = os.path.join(
     RESULT_DIR, "reconstruction", "xgboost_v2_glambie_annual_metrics.csv"
 )
+PHYS_V2_AMPLITUDE_SERIES = os.path.join(
+    RESULT_DIR, "reconstruction", "xgboost_v2_amplitude_sampling_series.csv"
+)
+PHYS_V2_AMPLITUDE_DIAGNOSTICS = os.path.join(
+    RESULT_DIR, "reconstruction", "xgboost_v2_amplitude_sampling_diagnostics.csv"
+)
 GLAMBIE_RGI02_CSV = (
     r"H:\Code\SMB\GlaMBIE_results\glambie_results_20240716"
     r"\hydrological_years\2_western_canada_us.csv"

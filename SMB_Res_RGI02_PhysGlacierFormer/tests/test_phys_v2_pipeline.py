@@ -29,6 +29,7 @@ from train_tree_v2_cv import (  # noqa: E402
     fit_model,
     make_model,
     monthly_physical_monotonic_constraints,
+    year_coherence_objective,
 )
 from calibrate_xgboost_v2_amplitude import fit_amplitude_calibrator  # noqa: E402
 from analyze_xgboost_v2_reconstruction import (  # noqa: E402
@@ -44,6 +45,31 @@ from train_twostage_xgboost_v2 import cross_fitted_spatial_mean  # noqa: E402
 
 
 class ExternalComparisonTests(unittest.TestCase):
+    def test_year_coherence_gradient_and_hessian_bound(self) -> None:
+        groups = np.array([200009, 200009, 200009, 200010])
+        observed = np.array([-2., -1., 0., 1.])
+        predicted = np.array([-1., -0.5, 0.2, 0.8])
+        weight = 0.5
+        gradient, majorant = year_coherence_objective(groups, weight)(observed, predicted)
+
+        def loss(pred):
+            residual = pred - observed
+            return 0.5 * (residual @ residual) + 0.5 * weight * 3 * residual[:3].mean()**2
+
+        step = 1e-5
+        finite_difference = []
+        for index in range(4):
+            delta = np.eye(4)[index] * step
+            finite_difference.append((loss(predicted + delta) - loss(predicted - delta)) / (2 * step))
+        np.testing.assert_allclose(gradient, finite_difference, atol=1e-8)
+        hessian = np.eye(4)
+        hessian[:3, :3] += weight / 3
+        self.assertGreaterEqual(np.linalg.eigvalsh(np.diag(majorant) - hessian).min(), -1e-10)
+        self.assertAlmostEqual(gradient[-1], predicted[-1] - observed[-1])
+        zero_gradient, zero_hessian = year_coherence_objective(groups, 0)(observed, predicted)
+        np.testing.assert_allclose(zero_gradient, predicted - observed)
+        np.testing.assert_allclose(zero_hessian, np.ones(4))
+
     def test_two_stage_spatial_fit_handles_missing_data_without_test_targets(self) -> None:
         spatial = np.repeat(np.array([[0, 1], [2, np.nan], [3, 4], [5, np.nan]]), 2, axis=0)
         target = np.linspace(-2, 1, 8)

@@ -71,6 +71,18 @@ The external figure now accumulates individual Malles forcing trajectories befor
 
 ## Literature Alignment
 
+### Amplitude And Sampling Diagnosis
+
+For matched October-September support over 2000-2023, there are 342 observations from 30 RGI glaciers. Annual coverage varies from 2 to 25 glaciers and represents only 0.019%-0.606% of RGI02 area. The 2020 sample has two glaciers and the 2022 sample three; annual diagnostics therefore report both all years and years with at least five observed glaciers.
+
+Within-glacier centered series (318 records; sites with at least five years) have predicted/observed standard-deviation ratios of 0.883 under LOGO and 0.675 under LOYO. This is evidence of temporal generalization shrinkage at observed glaciers. Centering is performed after OOF prediction for diagnosis, not during model fitting.
+
+Sampling and weighting also matter: the standard deviation of annual observed WGMS means relative to GlaMBIE is 0.933 with equal glacier weights but 0.664 with area weights. Holding the same 30 modeled sites fixed for all 24 years gives modeled/reference ratios of 0.851 with equal weights and 0.657 with area weights, versus 0.633 for all RGI02 area-weighted predictions. These are representativeness diagnostics, not evidence that equal weights estimate total regional mass change better. The final-model fit at training glaciers is explicitly labeled in-sample and excluded from validation claims. A blanket amplification of the regional curve is not justified by these comparisons.
+
+A predeclared year/end-month coherence penalty (weight 0.5, groups with at least three training samples) was tested using only outer-fold training targets. Its gradient passed finite-difference checks and its diagonal Hessian majorant passed a positive-semidefinite bound check. LOGO RMSE becomes 642.5 mm and LOYO 685.0 mm versus 641.3/677.0 mm without the penalty. Most-negative-decile LOYO RMSE worsens from 1154.7 to 1181.1 mm, and the full-sample predicted/observed standard-deviation ratio decreases from 0.692 to 0.683. This route is rejected. The test suite now contains 17 tests. Variance ratios are descriptive: an MSE-optimal conditional-mean predictor can have lower variance than noisy observations, so matching observed variance is not itself a valid training objective.
+
+The paired 2,000-resample differences for coherence weight 0.5 are +1.15 mm (LOGO; 95% CI -3.89 to +6.50) and +7.95 mm (LOYO; -2.01 to +19.76). They show no demonstrated improvement, without proving a significant degradation. Bootstrap groups are now sorted and RNGs reset per comparison so adding experiments does not change another run's intervals. The current `publication_evaluation` CSVs are authoritative for updated intervals; earlier ablation paragraphs record the original resampling runs.
+
 Malles ensemble membership needs explicit interpretation: only forcing members 1, 9 and 10 fully span 1951-2018; all ten coexist only in 1981-2010. Accumulating the annual available-member mean gives -379.97 Gt over 1951-2018, while the mean of three complete cumulative trajectories gives -335.32 Gt. The updated figure shows both curves and shades only the complete-trajectory 5th-95th percentile range in the cumulative panel. This difference is an ensemble-support effect, not a change in this study's predictions. The official model uncertainty field is not represented by that forcing-spread band.
 
 - [Sjursen et al. (2025)](https://tc.copernicus.org/articles/19/5801/2025/) show that XGBoost is competitive for medium-sized glacier tabular data and stress non-random validation and reanalysis-to-glacier elevation differences.

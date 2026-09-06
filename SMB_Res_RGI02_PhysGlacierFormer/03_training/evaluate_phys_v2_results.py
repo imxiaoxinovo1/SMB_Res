@@ -87,7 +87,7 @@ def bootstrap_intervals(
     n_bootstrap: int,
     rng: np.random.Generator,
 ) -> dict[str, float]:
-    groups = frame[group_column].dropna().unique()
+    groups = np.sort(frame[group_column].dropna().unique())
     if len(groups) < 2:
         return {}
     group_indices = frame.groupby(group_column, sort=False).indices
@@ -149,7 +149,7 @@ def paired_bootstrap_difference(
         return {"n_common": len(paired)}
     if not np.allclose(paired["obs_annual"], paired["obs_reference"], rtol=0, atol=1e-7):
         raise ValueError("Paired comparisons require identical observation targets.")
-    groups = paired[group_column].dropna().unique()
+    groups = np.sort(paired[group_column].dropna().unique())
     if len(groups) < 2 or paired[group_column].isna().any():
         raise ValueError("Paired bootstrap requires at least two complete clusters.")
     group_indices = paired.groupby(group_column, sort=False).indices
@@ -201,7 +201,6 @@ def main() -> None:
     diagnostic_rows = []
     run_frames: dict[tuple[str, str], pd.DataFrame] = {}
     expected_n = len(data["y_annual"])
-    rng = np.random.default_rng(args.seed)
     for path in paths:
         model, cv = infer_run(path)
         frame = pd.read_csv(path)
@@ -211,7 +210,10 @@ def main() -> None:
         run_frames[(model, cv)] = frame
         group_column = bootstrap_cluster_column(cv)
         values = regression_metrics(frame.obs_annual.to_numpy(), frame.pred_annual.to_numpy())
-        values.update(bootstrap_intervals(frame, group_column, args.bootstrap, rng))
+        # Adding another experiment must not change an existing run's resamples.
+        values.update(bootstrap_intervals(
+            frame, group_column, args.bootstrap, np.random.default_rng(args.seed)
+        ))
         metric_rows.append(
             {
                 "model": model,
@@ -245,7 +247,7 @@ def main() -> None:
             if model_cv != cv or model == reference_name or len(frame) != len(reference):
                 continue
             differences = paired_bootstrap_difference(
-                frame, reference, group_column, args.bootstrap, rng
+                frame, reference, group_column, args.bootstrap, np.random.default_rng(args.seed)
             )
             if differences["n_common"] != len(reference):
                 continue

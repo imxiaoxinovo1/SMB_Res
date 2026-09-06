@@ -18,6 +18,8 @@ sys.path.insert(0, PROJECT_DIR)
 from config import (  # noqa: E402
     GLAMBIE_RGI02_CSV,
     MALLES_REGION_NC,
+    PHYS_V2_AMPLITUDE_DIAGNOSTICS,
+    PHYS_V2_AMPLITUDE_SERIES,
     PHYS_V2_GLAMBIE_ANNUAL_METRICS,
     PHYS_V2_GLAMBIE_ANNUAL_SERIES,
     PHYS_V2_GLAMBIE_COMPARISON,
@@ -27,6 +29,8 @@ from config import (  # noqa: E402
     PHYS_V2_RECONSTRUCTION_QC_SUMMARY,
     PHYS_V2_RECONSTRUCTION_REGIONAL_CSV,
     PHYS_V2_ZEMP_COMPARISON,
+    PHYS_V2_RESULT_DIR,
+    PHYS_V2_SEQUENCES_NPZ,
     RGI02_SHP,
     ZEMP_RGI02_CSV,
 )
@@ -295,6 +299,96 @@ def cumulative_ensemble_summary(values: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
+def amplitude_sampling_diagnostics(
+    reconstruction: pd.DataFrame, regional: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Separate OOF temporal amplitude from modeled spatial aggregation effects."""
+    data = np.load(PHYS_V2_SEQUENCES_NPZ, allow_pickle=True)
+    samples = pd.DataFrame({
+        "glacier_id": data["glacier_ids"], "rgi_id": data["rgi_ids"],
+        "year": data["years"], "end_month": data["end_months"], "obs": data["y_annual"],
+    })
+    keys = ["glacier_id", "rgi_id", "year"]
+    tag = "xgboost_v2_compact_monthly_all_hyp_p-regularized"
+    for cv in ["logo", "loyo"]:
+        predictions = pd.read_csv(os.path.join(PHYS_V2_RESULT_DIR, tag, f"{tag}_{cv}_predictions.csv"))
+        samples = samples.merge(predictions[keys + ["obs_annual", "pred_annual"]],
+                                on=keys, how="left", validate="one_to_one")
+        # Compare in the target's original float32 precision after CSV round-trip.
+        if not np.array_equal(samples["obs"].to_numpy(np.float32), samples["obs_annual"].to_numpy(np.float32)):
+            raise ValueError("OOF target mismatch in amplitude diagnostics.")
+        samples = samples.rename(columns={"pred_annual": cv}).drop(columns="obs_annual")
+    samples = samples[samples.year.between(2000, 2023) & samples.end_month.eq(9)].copy()
+    if samples.empty or samples.duplicated(["rgi_id", "year"]).any():
+        raise ValueError("Amplitude diagnostics need unique September-end glacier-years.")
+    selected = reconstruction[reconstruction.year.between(2000, 2023)]
+    samples = samples.merge(selected[["rgi_id", "year", "area_km2", "predicted_smb_m"]],
+                            on=["rgi_id", "year"], how="left", validate="one_to_one")
+    samples = samples.rename(columns={"predicted_smb_m": "fitted_reconstruction"})
+    value_cols = ["obs", "logo", "loyo", "fitted_reconstruction"]
+    if not np.isfinite(samples[value_cols + ["area_km2"]].to_numpy()).all():
+        raise ValueError("Missing values in matched amplitude diagnostics.")
+
+    annual_rows = []
+    fixed_ids = samples.rgi_id.unique()
+    fixed_sites = selected[selected.rgi_id.isin(fixed_ids)]
+    for year, group in samples.groupby("year", sort=True):
+        fixed = fixed_sites[fixed_sites.year == year]
+        row = {"year": int(year), "n_observed_glaciers": len(group),
+               "sample_area_km2": float(group.area_km2.sum()), "n_fixed_sites": len(fixed_ids)}
+        for weighting in ["equal", "area"]:
+            weights = group.area_km2 if weighting == "area" else np.ones(len(group))
+            for column in value_cols:
+                row[f"sample_{column}_{weighting}_mwe"] = float(np.average(group[column], weights=weights))
+            fixed_weights = fixed.area_km2 if weighting == "area" else np.ones(len(fixed))
+            row[f"fixed_sites_raw_{weighting}_mwe"] = float(np.average(fixed.predicted_smb_m, weights=fixed_weights))
+        annual_rows.append(row)
+    annual = pd.DataFrame(annual_rows).merge(regional, on="year", validate="one_to_one")
+    annual = annual.merge(glambie_region02(), on="year", validate="one_to_one")
+    annual["sample_area_fraction"] = annual.sample_area_km2 / annual.inventory_area_all_km2
+    rows = []
+
+    def add_row(scope, reference_name, prediction_name, frame, reference, prediction, role):
+        observed = frame[reference].to_numpy(float)
+        predicted = frame[prediction].to_numpy(float)
+        metric = comparison_metrics(observed, predicted)
+        rows.append({
+            "scope": scope, "reference": reference_name, "prediction": prediction_name,
+            "n": len(frame), "pearson_r": metric["pearson_r"], "rmse_mwe_yr": metric["rmse_gt"],
+            "bias_mwe_yr": metric["bias_gt"],
+            "std_ratio": float(np.std(predicted) / np.std(observed)) if np.std(observed) > 0 else np.nan,
+            "slope": float(linregress(observed, predicted).slope) if np.std(observed) > 0 else np.nan,
+            "interpretation": role,
+        })
+
+    enough = samples.groupby("rgi_id").year.transform("nunique") >= 5
+    anomalies = samples[enough].copy()
+    # Descriptive centering after prediction; never fed back into model fitting.
+    anomalies[value_cols] = anomalies[value_cols] - anomalies.groupby("rgi_id")[value_cols].transform("mean")
+    for cv in ["logo", "loyo", "fitted_reconstruction"]:
+        role = "OOF prediction" if cv != "fitted_reconstruction" else "in-sample fit diagnostic; not validation"
+        add_row("matched_glacier_years", "WGMS", cv, samples, "obs", cv, role)
+        add_row("within_glacier_centered_min5years", "WGMS anomalies", cv, anomalies, "obs", cv, role)
+    for minimum in [1, 5]:
+        subset = annual[annual.n_observed_glaciers >= minimum]
+        for weighting in ["equal", "area"]:
+            observed = f"sample_obs_{weighting}_mwe"
+            for cv in ["logo", "loyo", "fitted_reconstruction"]:
+                add_row(f"annual_{weighting}_min{minimum}sites", "same-site WGMS", cv, subset,
+                        observed, f"sample_{cv}_{weighting}_mwe",
+                        "changing observed sample; OOF" if cv != "fitted_reconstruction" else "in-sample diagnostic")
+            add_row(f"annual_{weighting}_min{minimum}sites", "GlaMBIE combined", "sample WGMS", subset,
+                    "glambie_combined_mwe", observed, "sample representativeness; shared information")
+    for column, label in [
+        ("fixed_sites_raw_equal_mwe", "fixed observed sites, equal weights"),
+        ("fixed_sites_raw_area_mwe", "fixed observed sites, area weights"),
+        ("raw_area_weighted_smb_all_m", "all RGI02, area weights"),
+    ]:
+        add_row("fixed_model_spatial_support", "GlaMBIE combined", label, annual,
+                "glambie_combined_mwe", column, "modeled sampling diagnostic; not OOF validation")
+    return annual, pd.DataFrame(rows)
+
+
 def main() -> None:
     args = parse_args()
     usecols = [
@@ -486,6 +580,7 @@ def main() -> None:
     glambie_annual, glambie_metrics = glambie_annual_comparison(
         regional, args.bootstrap, args.block_years, args.seed
     )
+    amplitude_series, amplitude_metrics = amplitude_sampling_diagnostics(reconstruction, regional)
 
     os.makedirs(os.path.dirname(PHYS_V2_RECONSTRUCTION_QC_SUMMARY), exist_ok=True)
     pd.DataFrame(qc_rows).to_csv(PHYS_V2_RECONSTRUCTION_QC_SUMMARY, index=False)
@@ -502,6 +597,8 @@ def main() -> None:
     glambie_comparison.to_csv(PHYS_V2_GLAMBIE_COMPARISON, index=False)
     glambie_annual.to_csv(PHYS_V2_GLAMBIE_ANNUAL_SERIES, index=False)
     glambie_metrics.to_csv(PHYS_V2_GLAMBIE_ANNUAL_METRICS, index=False)
+    amplitude_series.to_csv(PHYS_V2_AMPLITUDE_SERIES, index=False)
+    amplitude_metrics.to_csv(PHYS_V2_AMPLITUDE_DIAGNOSTICS, index=False)
 
     print(pd.DataFrame(qc_rows).to_string(index=False))
     print("\nMalles & Marzeion comparison (full RGI02 only):")
@@ -521,6 +618,10 @@ def main() -> None:
     print(f"Saved external comparison -> {PHYS_V2_MALLES_COMPARISON}")
     print(f"Saved Zemp consistency comparison -> {PHYS_V2_ZEMP_COMPARISON}")
     print(f"Saved GlaMBIE period comparison -> {PHYS_V2_GLAMBIE_COMPARISON}")
+    print(f"Saved GlaMBIE annual series -> {PHYS_V2_GLAMBIE_ANNUAL_SERIES}")
+    print(f"Saved GlaMBIE annual metrics -> {PHYS_V2_GLAMBIE_ANNUAL_METRICS}")
+    print(f"Saved amplitude/sampling series -> {PHYS_V2_AMPLITUDE_SERIES}")
+    print(f"Saved amplitude/sampling diagnostics -> {PHYS_V2_AMPLITUDE_DIAGNOSTICS}")
     if not complete:
         raise RuntimeError("Reconstruction failed the expected glacier-year completeness checks.")
 

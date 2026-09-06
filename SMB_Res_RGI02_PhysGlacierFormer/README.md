@@ -89,3 +89,5 @@ The corrected hydrological reconstruction begins in 1951 because ERA5-Land begin
 - Treat SHAP contributions as descriptive model interpretation, not causal attribution.
 
 `analyze_xgboost_v2_reconstruction.py` saves separate GlaMBIE annual-series and metrics CSVs under `results/reconstruction/`. `05_figures/plot_reconstruction_external_comparison.py` produces the four-panel external comparison and `fig_glambie_annual_comparison.png`, without PDF duplicates. Malles cumulative shading is calculated from cumulative forcing-member trajectories, not cumulative annual quantiles.
+
+The same analyzer also saves `xgboost_v2_amplitude_sampling_series.csv` and `xgboost_v2_amplitude_sampling_diagnostics.csv`. These separate matched September-end OOF variability, changing observation coverage, equal/area weighting, and fixed-site modeled aggregation. In-sample reconstruction diagnostics must not be reported as validation skill.
